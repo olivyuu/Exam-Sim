@@ -20,6 +20,7 @@ export function ExamHeader({
   const next = useExamStore((s) => s.next)
   const toggleFlag = useExamStore((s) => s.toggleFlag)
   const setLabOpen = useExamStore((s) => s.setLabOpen)
+  const chooseLabSheet = useExamStore((s) => s.chooseLabSheet)
   const setNotesOpen = useExamStore((s) => s.setNotesOpen)
   const setCalculatorOpen = useExamStore((s) => s.setCalculatorOpen)
   const question = questions[currentIndex]
@@ -67,9 +68,16 @@ export function ExamHeader({
       <div className="tool-row">
         <button
           className={`tool-btn ${labOpen ? 'active' : ''}`}
-          disabled={!labSheet}
-          onClick={() => setLabOpen(!labOpen)}
-          title={labSheet ? 'Lab sheet (L)' : 'Laboratory reference sheet'}
+          onClick={() => {
+            if (labSheet) {
+              setLabOpen(!labOpen)
+              return
+            }
+            void chooseLabSheet().then((ok) => {
+              if (ok) setLabOpen(true)
+            })
+          }}
+          title={labSheet ? 'Lab sheet (L)' : 'Choose a lab values PDF'}
         >
           <span className="icon">{Icons.lab}</span>
           <span>Lab Values</span>

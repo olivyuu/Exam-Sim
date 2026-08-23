@@ -53,8 +53,9 @@
         "to": "ocr-helper"
       },
       {
-        "from": "resources/lab-reference.pdf",
-        "to": "lab-reference.pdf"
+        "from": "resources",
+        "to": ".",
+        "filter": ["lab-reference.pdf"]
       }
     ],
     "mac": {

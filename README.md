@@ -59,23 +59,23 @@ npm run dev
 
 ## Laboratory values PDF (optional)
 
-A lab sheet is **not** required and is **not** in this repo.
+A lab sheet is **not** required and is **not** in this repo. Find a **publicly available** laboratory reference-ranges PDF (for example from a university, hospital, or other openly published source you are allowed to use). Do not use copyrighted exam-board lab tables.
 
 ### In the app (easiest)
 
 1. Open Practice Exam.
 2. On setup, under **Laboratory values PDF (optional)**, click **Choose lab values PDF**.
-3. Pick a PDF you are allowed to use.
-4. The header **Lab Values** button works during the test. Click **Remove lab PDF** to clear it.
+3. Pick the public lab-values PDF you downloaded.
+4. During the test, **Lab Values** opens that PDF. If you skipped setup, click **Lab Values** (or press **L**) and choose the file then. **Remove lab PDF** clears it.
 
-If you skip this, the test still runs. Lab Values stays off.
+If you skip this, the test still runs.
 
 ### Before you pack (optional, bundled into the .app)
 
 If you want Lab Values available without picking a file each time:
 
 ```bash
-cp /path/to/your-lab-values.pdf resources/lab-reference.pdf
+cp /path/to/your-public-lab-values.pdf resources/lab-reference.pdf
 npm run pack
 ```
 
@@ -98,7 +98,7 @@ During the test:
 | --- | --- |
 | Timer | 1.5 minutes per extracted question |
 | Mark | Flag the item |
-| Lab Values | Opens your lab PDF if you added one |
+| Lab Values | Opens your lab PDF, or asks you to choose one |
 | Notes | Per-question notes (saved until you reset) |
 | Highlight | Drag across the stem |
 | Strike | Right-click (Control-click) a choice |
@@ -134,7 +134,7 @@ scripts/             Local parser QC helpers (optional)
 | Scanned PDFs look empty | First import can take a while; those pages are OCR’d. |
 | Formatted stem looks wrong | Use **Show image of original question**, or re-import after a rebuild. |
 | Intel Mac | `npm run pack` on that machine so Electron builds for your CPU. |
-| Lab Values is disabled | Add a lab PDF on setup, or copy one to `resources/lab-reference.pdf` and pack again. |
+| Lab Values has no PDF | Click **Lab Values** (or **Choose lab values PDF** on setup) and pick a publicly available lab-values sheet. Or copy one to `resources/lab-reference.pdf` and pack again. |
 
 ---
 

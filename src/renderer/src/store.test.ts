@@ -84,6 +84,21 @@ describe('exam store interactions', () => {
     expect(useExamStore.getState().phase).toBe('review')
   })
 
+  it('stores a lab-values PDF the user picks', async () => {
+    const lab = { id: 'lab1', name: 'public-labs.pdf', path: '/tmp/public-labs.pdf', size: 24 }
+    ;(globalThis as unknown as { window: { practiceExam: { openPdfs: () => Promise<typeof lab[]>; saveSession: () => Promise<boolean> } } }).window =
+      {
+        practiceExam: {
+          openPdfs: async () => [lab],
+          saveSession: async () => true
+        }
+      }
+    useExamStore.setState({ labSheet: null })
+    const ok = await useExamStore.getState().chooseLabSheet()
+    expect(ok).toBe(true)
+    expect(useExamStore.getState().labSheet).toEqual(lab)
+  })
+
   it('scores review coloring from the stored key', () => {
     useExamStore.getState().selectAnswer('B')
     useExamStore.getState().confirmEndExam()

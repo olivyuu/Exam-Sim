@@ -9,6 +9,7 @@ export function useExamHotkeys() {
   const labOpen = useExamStore((s) => s.labOpen)
   const labSheet = useExamStore((s) => s.labSheet)
   const setLabOpen = useExamStore((s) => s.setLabOpen)
+  const chooseLabSheet = useExamStore((s) => s.chooseLabSheet)
   const notesOpen = useExamStore((s) => s.notesOpen)
 
   useEffect(() => {
@@ -27,12 +28,18 @@ export function useExamHotkeys() {
       } else if (event.key.toLowerCase() === 'f' && !event.metaKey && !event.ctrlKey) {
         event.preventDefault()
         toggleFlag()
-      } else if (event.key.toLowerCase() === 'l' && !event.metaKey && !event.ctrlKey && labSheet) {
+      } else if (event.key.toLowerCase() === 'l' && !event.metaKey && !event.ctrlKey) {
         event.preventDefault()
-        setLabOpen(!labOpen)
+        if (labSheet) {
+          setLabOpen(!labOpen)
+          return
+        }
+        void chooseLabSheet().then((ok) => {
+          if (ok) setLabOpen(true)
+        })
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, next, prev, toggleFlag, labOpen, labSheet, setLabOpen, notesOpen])
+  }, [phase, next, prev, toggleFlag, labOpen, labSheet, setLabOpen, chooseLabSheet, notesOpen])
 }

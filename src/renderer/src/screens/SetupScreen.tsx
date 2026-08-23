@@ -14,6 +14,7 @@ export function SetupScreen() {
   const parseAndReview = useExamStore((s) => s.parseAndReview)
   const labSheet = useExamStore((s) => s.labSheet)
   const setLabSheet = useExamStore((s) => s.setLabSheet)
+  const chooseLabSheet = useExamStore((s) => s.chooseLabSheet)
 
   const unmatched = sets.some((s) => !s.answerPdf)
   const canStart = sets.length > 0 && !unmatched && !parseProgress
@@ -31,17 +32,13 @@ export function SetupScreen() {
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Laboratory values PDF (optional)</h2>
         <p className="lede" style={{ marginBottom: 12 }}>
-          Use a lab-reference sheet you are allowed to use. This is not required to start a test.
+          Upload a laboratory reference-ranges PDF if you want the <strong>Lab Values</strong> button during the test.
+          Search the web for a <strong>publicly available</strong> lab-values sheet (university, hospital, or other
+          openly published source you are allowed to use). Do not use copyrighted exam-board tables. This is not
+          required to start a test.
         </p>
         <div className="btn-row">
-          <button
-            className="btn"
-            onClick={() =>
-              void window.practiceExam.openPdfs('lab').then((files) => {
-                if (files[0]) setLabSheet(files[0])
-              })
-            }
-          >
+          <button className="btn" onClick={() => void chooseLabSheet()}>
             Choose lab values PDF
           </button>
           {labSheet ? (
@@ -53,7 +50,7 @@ export function SetupScreen() {
         <p style={{ margin: '12px 0 0', color: '#5b6773' }}>
           {labSheet
             ? `Using: ${labSheet.name}`
-            : 'No lab PDF selected. Lab Values stays off until you add one.'}
+            : 'No lab PDF selected. You can also add one later by clicking Lab Values during the test.'}
         </p>
       </div>
 

@@ -19,6 +19,7 @@ interface Actions {
   replaceAnswer: (setId: string, file: FileMeta) => void
   removeSet: (setId: string) => void
   setLabSheet: (file: FileMeta | null) => void
+  chooseLabSheet: () => Promise<boolean>
   clearAll: () => void
   parseAndReview: () => Promise<void>
   startExam: () => void
@@ -162,7 +163,18 @@ export const useExamStore = create<SessionState & Actions>((set, get) => ({
     set((state) => ({ sets: state.sets.filter((s) => s.id !== setId) }))
   },
 
-  setLabSheet: (file) => set({ labSheet: file }),
+  setLabSheet: (file) => {
+    set({ labSheet: file, labOpen: file ? get().labOpen : false })
+    get().persist()
+  },
+
+  chooseLabSheet: async () => {
+    const files = await window.practiceExam.openPdfs('lab')
+    const file = files[0]
+    if (!file) return false
+    get().setLabSheet(file)
+    return true
+  },
 
   clearAll: () => set({ ...emptySession() }),
 

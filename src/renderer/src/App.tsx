@@ -47,7 +47,7 @@ function ExamApp() {
   useEffect(() => {
     if (phase !== 'setup') return
     void window.practiceExam.getDefaultLab().then((file) => {
-      if (file) setLabSheet(file)
+      if (file && !useExamStore.getState().labSheet) setLabSheet(file)
     })
   }, [setLabSheet, phase])
 
