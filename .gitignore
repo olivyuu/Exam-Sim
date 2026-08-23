@@ -1,0 +1,15 @@
+node_modules
+out
+dist
+release
+.DS_Store
+*.log
+.vite
+coverage
+.idea
+.vscode
+*.tsbuildinfo
+resources/ocr-helper
+resources/lab-reference.pdf
+.env
+.env.*

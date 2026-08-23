@@ -1,0 +1,522 @@
+const LAB_UNITS =
+  '(?:mEq\\/L|mg\\/dL|mg\\/dl|g\\/dL|g\\/dl|U\\/L|mm\\s*Hg|mm\\s*\\/\\s*h|mmol\\/L|sec(?:\\s*\\(INR\\s*=\\s*[\\d.\\s]+\\))?|%|\\/mm\\s*3|\\/mm³|\\/hpf|\\/lpf|\\/min|ng\\/mL|ng\\/ml|µg\\/dL|µg\\/dl|μg\\/dL|µU\\/ml|μU\\/ml|pg\\/ml|pmol\\/L|µm³|μm³|µm\\s*3|mg\\/24\\s*h)'
+
+const VALUE_CORE = new RegExp(
+  `^(?:<?[\\d.,]+\\s*${LAB_UNITS}(?:\\s*\\(N\\s*=\\s*[^)]+\\))?(?:\\s+with a normal differential)?|\\d+\\s*-\\s*\\d+\\s*\\/(?:hpf|lpf)|[1-4]\\s*\\+|[5-8](?:\\.\\d{1,3})?|1\\.0\\d{2}|negative|positive|trace|none|nonreactive|reactive|few granular|coarse granular)$`,
+  'i'
+)
+
+const LAB_SHOW =
+  /(?:(?:fasting\s+)?(?:serum|laboratory|blood|urine|plasma|csf)\s+studies\s+show|(?:arterial\s+blood\s+gas[\s\S]{0,90})\s+shows?|urinalysis\s+shows?|hemoglobin electrophoresis\s+shows?)\s*:/i
+
+const LAB_HEADER_LINE =
+  /^(serum|urine|plasma|csf|complete blood count|pleural fluid|synovial fluid|peritoneal fluid|urinalysis|arterial blood gas analysis(?: on room air)?(?: shows?:?)?|hemoglobin electrophoresis(?: shows?:?)?|on admission|now)$/i
+
+export const LAB_STOP_LINE =
+  /^(which of the following|intravenous (?:infusion|administration)|an x-ray|a ct|an ecg|echocardiography|ultrasonography|venous duplex|microscopic examination|abdominal ultrasonography|examination shows|the remainder|the patient asks|supplementation with|blood cultures|a gram stain|0\s*[A-JQ]\)|[A-J]\))/i
+
+const KNOWN_NAMES = [
+  'Fractional excretion of Na+',
+  'Fingerstick blood glucose',
+  'Partial thromboplastin time',
+  'Prothrombin time',
+  'Mean corpuscular volume',
+  'Erythrocyte sedimentation rate',
+  'Parathyroid hormone-related protein',
+  'Parathyroid hormone, intact',
+  'Transferrin saturation',
+  'Hemoglobin electrophoresis',
+  'Lactate dehydrogenase',
+  'Alkaline phosphatase',
+  'Total cholesterol',
+  'Bilirubin (total)',
+  'Bilirubin, total',
+  'Total bilirubin',
+  'Serum creatinine',
+  'Serum amylase',
+  'Serum glucose',
+  'Leukocyte count',
+  'Platelet count',
+  'Reticulocyte count',
+  'Segmented neutrophils',
+  'Pigmented granular casts',
+  'Specific gravity',
+  'Urea nitrogen',
+  'Blood alcohol',
+  'Creatine kinase',
+  'Urine protein',
+  'Urine pH',
+  'O2 saturation',
+  'Hemoglobin A1c',
+  'Hemoglobin A2',
+  'Hemoglobin F',
+  'Hemoglobin A',
+  'Glucose, fasting',
+  'Total protein',
+  'Uric acid',
+  'Hemoglobin',
+  'Hematocrit',
+  'Lymphocytes',
+  'Monocytes',
+  'Eosinophils',
+  'Basophils',
+  'Creatinine',
+  'Albumin',
+  'Globulin',
+  'Phosphorus',
+  'Total iron-binding capacity',
+  'Iron-binding capacity',
+  'TIBC',
+  'Postvoid residual volume',
+  'Leukocyte esterase',
+  'Ferritin',
+  'Amylase',
+  'Glucose',
+  'Protein',
+  'Ketones',
+  'Direct',
+  'Total',
+  'Bands',
+  'Casts',
+  'HBsAg',
+  'Anti-HBs',
+  'Anti-HBc',
+  'Anti-HCV',
+  'ALT',
+  'AST',
+  'Pco2',
+  'Po2',
+  'RBC',
+  'WBC',
+  'HCO3-',
+  'Na+',
+  'K+',
+  'Cl-',
+  'Ca2+',
+  'pH',
+  'Iron',
+  'Blood'
+]
+
+const NAME_SPLIT = new RegExp(`^(${KNOWN_NAMES.map(escapeReg).join('|')})(?=\\s|$|\\d)`, 'i')
+
+function escapeReg(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function normalizeLabToken(line: string): string {
+  return line
+    .replace(/\u00a0/g, ' ')
+    .replace(/\bRSC\b/g, 'RBC')
+    .replace(/\bcI\s*-/gi, 'Cl-')
+    .replace(/\bc\s*1\s*-/gi, 'Cl-')
+    .replace(/\bCl\s*[·•]\s*/g, 'Cl-')
+    .replace(/\bCl\s+-/g, 'Cl-')
+    .replace(/\bHCO\s*-?\s*3\s*-?/gi, 'HCO3-')
+    .replace(/\bHco\s*-/gi, 'HCO3-')
+    .replace(/\bHC0?3-/gi, 'HCO3-')
+    .replace(/\bPco\s*2/gi, 'Pco2')
+    .replace(/\bPo\s*2/gi, 'Po2')
+    .replace(/\b0\s*2 saturation/gi, 'O2 saturation')
+    .replace(/\bCa\s*2\+/gi, 'Ca2+')
+    .replace(/\bHemoglobin A\s*1c\b/gi, 'Hemoglobin A1c')
+    .replace(/\bHemoglobin A\s*2\b/gi, 'Hemoglobin A2')
+    .replace(/\bF102\b/gi, 'FiO2')
+    .replace(/\bcm\s*Hp\b/gi, 'cm H2O')
+    .replace(/\/mm\s*3\b/gi, '/mm³')
+    .replace(/\/mm3\b/gi, '/mm³')
+    .replace(/µm\s*3\b/g, 'µm³')
+    .replace(/μm\s*3\b/g, 'µm³')
+    .replace(/N=0o\/o/gi, 'N=0%')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function isLabValueLine(line: string): boolean {
+  const t = normalizeLabToken(line)
+  if (!t || LAB_STOP_LINE.test(t) || /which of the following/i.test(t)) return false
+  if (VALUE_CORE.test(t) || VALUE_CORE.test(t.replace(/\s+/g, ' '))) return true
+  if (/^<?[\d.,]+\s*(?:mEq\/L|mg\/dL|mg\/dl|g\/dL|U\/L|\/mm³)/i.test(t)) return true
+  if (/^\d+\s*sec(?:\s*\(INR\s*=\s*[\d.]+\))?$/i.test(t)) return true
+  if (/^[\d.,]+\s*(?:ng|µg|μg|pg|µU|μU|pmol)/i.test(t)) return true
+  if (/^[\d.,]+\s*%\s*\(N\s*=/i.test(t)) return true
+  if (/^(?:few|coarse)\s+granular$/i.test(t)) return true
+  if (/^1\.0[0-4]\d$/.test(t)) return true
+  return false
+}
+
+export function isLabSection(line: string): boolean {
+  return LAB_HEADER_LINE.test(normalizeLabToken(line).replace(/:$/, ''))
+}
+
+export function isLabNameLine(line: string): boolean {
+  const t = normalizeLabToken(line)
+  if (!t || isLabValueLine(t) || isLabSection(t) || LAB_STOP_LINE.test(t)) return false
+  if (/^[O0Q]$/i.test(t) || /[?]/.test(t) || t.length > 56) return false
+  const known = t.match(NAME_SPLIT)
+  if (known && known[0].length === t.length) return true
+  if (/\b(is|are|of|the|and|with|for|to)\b/i.test(t)) return false
+  if (
+    /count|time|rate|saturation|gravity|nitrogen|kinase|phosphatase|bilirubin|cholesterol|globulin|albumin|creatinine|hemoglobin|hematocrit|neutrophils|lymphocytes|platelet|ferritin|amylase|cast|excretion/i.test(
+      t
+    ) &&
+    t.split(' ').length <= 6
+  ) {
+    return true
+  }
+  return /^(Na\+|K\+|Cl-|HCO3-|Ca2\+|pH|RBC|WBC|ALT|AST|Po2|Pco2|Bands|Ketones|Direct|Total|Iron|Blood)$/i.test(t)
+}
+
+export function explodeLabLine(line: string): string[] {
+  let t = normalizeLabToken(line)
+  if (!t || /^[O0Q]$/i.test(t)) return []
+  t = t.replace(/\s*\((mg\/dl|g\/dl|\/hpf)\s*\)\s*$/i, '')
+
+  const mashed = t.match(/^(.*[A-Za-z)\]])\s*(\d[\d.,].*)$/)
+  if (mashed && isLabNameLine(mashed[1]) && isLabValueLine(mashed[2])) {
+    return [normalizeLabToken(mashed[1]), normalizeLabToken(mashed[2])]
+  }
+
+  const parts: string[] = []
+  let rest = t
+  while (rest) {
+    const name = rest.match(NAME_SPLIT)
+    if (name && name[0].length < rest.length && isLabNameLine(name[0])) {
+      const after = rest.slice(name[0].length).trim()
+      if (!after || isLabValueLine(after) || NAME_SPLIT.test(after) || isLabSection(after)) {
+        parts.push(normalizeLabToken(name[0]))
+        rest = after
+        continue
+      }
+    }
+    parts.push(rest)
+    break
+  }
+  return parts.flatMap((part) => {
+    const valueSplit = part.match(/^(.*[A-Za-z)\]])\s+(\d[\d.,].*)$/)
+    if (valueSplit && isLabNameLine(valueSplit[1]) && isLabValueLine(valueSplit[2])) {
+      return [normalizeLabToken(valueSplit[1]), normalizeLabToken(valueSplit[2])]
+    }
+    return [normalizeLabToken(part)]
+  }).filter(Boolean)
+}
+
+function findLabBlockStart(text: string): number {
+  const specific = text.search(LAB_SHOW)
+  if (specific >= 0) return specific
+  const generic = text.matchAll(/([^\n]{2,90}shows?:)\s*(?:\n|$)/gi)
+  for (const match of generic) {
+    const index = match.index ?? 0
+    if (/examination shows|x-ray of|ultrasonography|gram stain|culture/i.test(match[1]) && !/urinalysis|laboratory|serum|blood gas/i.test(match[1])) {
+      continue
+    }
+    const after = text.slice(index + match[0].length)
+    const next = after.split('\n').map((line) => line.trim()).find(Boolean)
+    if (next && (isLabValueLine(next) || isLabNameLine(next) || isLabSection(next))) return index
+  }
+  return -1
+}
+
+function isColumnHeader(token: string): boolean {
+  return /^(on admission|now)$/i.test(normalizeLabToken(token))
+}
+
+function pairTwoColumn(tokens: string[]): string[] | null {
+  const admission = tokens.findIndex(isColumnHeader)
+  const now = tokens.findIndex((token, index) => index > admission && /^now$/i.test(token))
+  if (admission < 0 || now < 0) return null
+  const names = tokens.slice(0, admission)
+  const first = tokens.slice(admission + 1, now).filter((token) => !isColumnHeader(token))
+  const second = tokens.slice(now + 1).filter((token) => !isColumnHeader(token))
+  if (first.length < 2 || second.length < 2) return null
+
+  const out = ['On Admission    Now']
+  let a = 0
+  let b = 0
+  for (const name of names) {
+    if (isLabSection(name) || /shows?:?$/i.test(name)) {
+      out.push(name.replace(/:$/, ''))
+      continue
+    }
+    const left = first[a++] ?? ''
+    const right = second[b++] ?? ''
+    out.push(`${name}    ${left}    ${right}`.trim())
+  }
+  return out
+}
+
+function labelBareAbg(tokens: string[]): string[] {
+  const out: string[] = []
+  for (let i = 0; i < tokens.length; i++) {
+    const first = tokens[i]
+    const second = tokens[i + 1]
+    const third = tokens[i + 2]
+    if (
+      isLabValueLine(first) &&
+      /^[6-8]\.\d+/.test(first) &&
+      second &&
+      /mm Hg/i.test(second) &&
+      third &&
+      /mm Hg/i.test(third) &&
+      !/^pH$/i.test(out[out.length - 1] ?? '')
+    ) {
+      out.push('pH', first, 'Pco2', second, 'Po2', third)
+      i += 2
+      continue
+    }
+    out.push(first)
+  }
+  return out
+}
+
+function valueUnitFamily(value: string): string | null {
+  if (/%/.test(value) && !/mm/.test(value)) return 'percent'
+  if (/µm³|um\s*3|μm³|fL\b/i.test(value)) return 'volume'
+  if (/ng\/m[lL]/i.test(value)) return 'ferritin'
+  if (/pg\/(?:m[lL]|d[lL])/i.test(value)) return 'pg'
+  if (/µg\/d[lL]|mcg\/d[lL]|μg\/d[lL]/i.test(value)) return 'iron'
+  if (/mm\s*\/\s*h/i.test(value)) return 'esr'
+  if (/mEq\/L|mmol\/L/i.test(value)) return 'electrolyte'
+  if (/mg\/d[lL]/i.test(value)) return 'chem'
+  if (/g\/d[lL]/i.test(value)) return 'protein'
+  if (/U\/L/i.test(value)) return 'enzyme'
+  if (/\/mm³|\/mm3/i.test(value)) return 'count'
+  if (/mm Hg/i.test(value)) return 'gas'
+  if (/^1\.\d{3}/.test(value)) return 'sg'
+  if (/^(?:positive|negative|nonreactive|reactive)$/i.test(value)) return 'sero'
+  return null
+}
+
+function nameUnitFamily(name: string): string | null {
+  if (/mean corpuscular volume|^mcv$/i.test(name)) return 'volume'
+  if (/hematocrit/i.test(name)) return 'percent'
+  if (/hemoglobin(?! electrophoresis)/i.test(name)) return 'protein'
+  if (/ferritin/i.test(name)) return 'ferritin'
+  if (/iron-binding|^tibc$|^(?:serum )?iron$/i.test(name)) return 'iron'
+  if (/sedimentation/i.test(name)) return 'esr'
+  if (/fractional excretion/i.test(name)) return 'percent'
+  if (/residual volume/i.test(name)) return 'volume'
+  if (/leukocyte count|platelet count/i.test(name)) return 'count'
+  if (/urea nitrogen|creatinine|bilirubin|cholesterol|calcium/i.test(name)) return 'chem'
+  if (/^(?:na\+|k\+|cl-|hco3-|bicarbonate)$/i.test(name)) return 'electrolyte'
+  if (/specific gravity/i.test(name)) return 'sg'
+  if (/albumin|total protein/i.test(name)) return 'protein'
+  if (/alkaline phosphatase|\bast\b|\balt\b/i.test(name)) return 'enzyme'
+  if (/hbsag|anti-hbs|anti-hbc|anti-hcv/i.test(name)) return 'sero'
+  return null
+}
+
+function compatibleLabPair(name: string, value: string): boolean {
+  if (/^pH$/i.test(name) && /^1\.0/.test(value)) return false
+  if (/specific gravity/i.test(name) && /^[6-8]\.\d/.test(value)) return false
+  const nameFamily = nameUnitFamily(name)
+  const valueFamily = valueUnitFamily(value)
+  if (nameFamily && valueFamily && nameFamily !== valueFamily) return false
+  return true
+}
+
+function pairLabTokens(tokens: string[]): string[] {
+  const columns = pairTwoColumn(tokens)
+  if (columns) return columns
+
+  type Item = { type: 'name' | 'header'; text: string }
+  const pending: Item[] = []
+  const out: string[] = []
+  const pair = (name: string, value: string) => `${name.padEnd(Math.max(24, name.length + 2))}${value}`
+  const nameCount = () => pending.filter((item) => item.type === 'name').length
+
+  const emitWithValues = (values: string[]) => {
+    let index = 0
+    for (const item of pending) {
+      if (item.type === 'header') {
+        out.push(item.text)
+        continue
+      }
+      const match = values.findIndex((value, valueIndex) => valueIndex >= index && compatibleLabPair(item.text, value))
+      if (match >= 0) {
+        values.slice(index, match).forEach((value) => out.push(value))
+        out.push(pair(item.text, values[match]))
+        index = match + 1
+      } else {
+        out.push(item.text)
+      }
+    }
+    pending.length = 0
+    values.slice(index).forEach((value) => out.push(value))
+  }
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    const next = tokens[i + 1] ?? ''
+    if (
+      isLabSection(token) ||
+      /shows?:?$/i.test(token) ||
+      (/^protein$/i.test(token) && /^(total|albumin)$/i.test(next))
+    ) {
+      pending.push({ type: 'header', text: token.replace(/:$/, '') })
+      continue
+    }
+    if (isLabValueLine(token)) {
+      if (nameCount() <= 1) {
+        while (pending[0]?.type === 'header') out.push(pending.shift()!.text)
+        const matchIndex = pending.findIndex((item) => item.type === 'name' && compatibleLabPair(item.text, token))
+        const name = matchIndex >= 0 ? pending.splice(matchIndex, 1)[0] : pending.shift()
+        out.push(name && compatibleLabPair(name.text, token) ? pair(name.text, token) : token)
+        if (name && !compatibleLabPair(name.text, token)) pending.unshift(name)
+      } else {
+        const values = [token]
+        while (i + 1 < tokens.length && isLabValueLine(tokens[i + 1])) {
+          i += 1
+          values.push(tokens[i])
+        }
+        emitWithValues(values)
+      }
+      continue
+    }
+    if (isLabNameLine(token)) pending.push({ type: 'name', text: token })
+  }
+  emitWithValues([])
+  return out
+}
+
+function collectLabTokens(text: string): string[] {
+  const tokens: string[] = []
+  for (const line of text.split('\n')) {
+    for (const token of explodeLabLine(line)) {
+      if (!token) continue
+      if (LAB_STOP_LINE.test(token) || /which of the following|intravenous infusion of/i.test(token) || token.length > 90) {
+        return tokens
+      }
+      tokens.push(token)
+    }
+  }
+  return tokens
+}
+
+function leftoverProse(body: string): string {
+  const lines = body.split('\n')
+  const kept: string[] = []
+  let inLabs = true
+  for (const line of lines) {
+    const token = normalizeLabToken(line)
+    if (!token) continue
+    if (inLabs && (LAB_STOP_LINE.test(token) || token.length > 90) && !isLabValueLine(token) && !isLabNameLine(token) && !isLabSection(token)) {
+      inLabs = false
+    }
+    if (!inLabs) kept.push(token)
+  }
+  return kept.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+function tidyLeftover(text: string): string {
+  const cleaned = text
+    .replace(/\s+/g, ' ')
+    .replace(/\s*(immediate discontinuation of|supplementation with)$/i, '')
+    .trim()
+  if (!cleaned) return ''
+  if (cleaned.length < 90 && !/[.!]/.test(cleaned) && /with$|of$|shown\.?$/i.test(cleaned)) return ''
+  return cleaned
+}
+
+function promptLine(after: string): string {
+  return (after.match(/((?:intravenous infusion of )?(?:which of the following)[\s\S]*?\?)/i)?.[1] ?? '')
+    .replace(/\s+/g, ' ')
+    .replace(/^which/, 'Which')
+    .trim()
+}
+
+export function splitLabCluster(token: string): string[] {
+  if (!token) return []
+  return token
+    .split(/\n/)
+    .flatMap((line) => explodeLabLine(line))
+    .flatMap((part) =>
+      part.split(new RegExp(`(?<=${LAB_UNITS})\\s+`, 'i')).flatMap((piece) => piece.split(/\s+(?=\d)/))
+    )
+    .map(normalizeLabToken)
+    .filter(Boolean)
+}
+
+export function peelLabTail(text: string): { text: string; tokens: string[] } {
+  let working = text.trim()
+  const named: string[] = []
+  working = working.replace(
+    /\s((?:Protein|WBC|RBC|Hematocrit|Leukocyte count|Na\+|K\+|Cl-|HCO3-|Casts|Specific gravity)(?:\s+(?:Protein|WBC|RBC|Casts|Na\+|K\+|Cl-|HCO3-))*)(?=\s+[\d.]|\s+[1-4]\+|$)/i,
+    (_all, names: string) => {
+      named.push(...names.split(/\s+/).map(normalizeLabToken))
+      return ''
+    }
+  )
+  const start = working.search(
+    /\s(?:[\d.,]+\s*(?:mEq\/L|mg\/dL|mg\/dl|g\/dL|g\/dl|U\/L|mm\s*Hg|\/mm\s*3|\/mm³|\/hpf|\/lpf|ng\/mL|µm³)|(?:\d+\s*-\s*\d+\s*\/(?:hpf|lpf))|(?:[1-4]\+\s+(?:[1-4]\+|trace|negative|none))|(?:trace|none)\s+(?:trace|none|[1-4]\+))/i
+  )
+  if (start < 0) return { text: working.trim(), tokens: named }
+  const head = working.slice(0, start).trim()
+  const blob = working.slice(start).trim()
+  const tokens = splitLabCluster(blob).filter(
+    (token) => isLabValueLine(token) || isLabNameLine(token) || isLabSection(token)
+  )
+  const all = [...named, ...tokens]
+  if (all.filter(isLabValueLine).length < 1 && named.length === 0) {
+    return { text: text.trim(), tokens: [] }
+  }
+  return { text: head, tokens: all }
+}
+
+export function formatEmbeddedLabs(text: string, extraTokens: string[] = []): string {
+  const marker = findLabBlockStart(text)
+  if (marker < 0) return text
+
+  const prefix = text.slice(0, marker).trimEnd()
+  const rest = text.slice(marker)
+  const headerMatch = rest.match(/^[\s\S]*?shows?:\s*/i)
+  const header = (headerMatch ? headerMatch[0] : rest).replace(/\s+/g, ' ').trim()
+  let body = headerMatch ? rest.slice(headerMatch[0].length) : ''
+
+  const which = body.search(/intravenous infusion of which of the following|which of the following/i)
+  let after = ''
+  if (which >= 0) {
+    after = body.slice(which)
+    body = body.slice(0, which)
+  } else {
+    const whichInRest = rest.search(/intravenous infusion of which of the following|which of the following/i)
+    if (whichInRest >= 0) after = rest.slice(whichInRest)
+  }
+
+  const tokens = collectLabTokens(body)
+  for (const extra of extraTokens) tokens.push(...explodeLabLine(extra))
+
+  const whichLine = promptLine(after)
+  let lastChoicePercent = ''
+  for (const line of after.split('\n')) {
+    const rawLine = line.trim()
+    const isChoice = /^(?:[O0○●□■Q]\s*)?[A-J][\)\.]/.test(rawLine)
+    if (/^which of the following|intravenous infusion of which/i.test(rawLine)) continue
+    if (isChoice) {
+      const stripped = rawLine.replace(/^(?:[O0○●□■Q]\s*)?[A-J][\)\.]\s*/, '')
+      tokens.push(...peelLabTail(stripped).tokens)
+      const nameTail = stripped.match(
+        /\s((?:Protein|WBC|RBC|Hematocrit|Leukocyte count|Na\+|K\+|Cl-|HCO3-|Casts|Specific gravity)(?:\s+(?:Protein|WBC|RBC|Casts|Na\+|K\+|Cl-|HCO3-))*)$/i
+      )
+      if (nameTail) tokens.push(...nameTail[1].split(/\s+/).map(normalizeLabToken))
+      const percent = stripped.match(/^(.*?)\s+([\d.,]+\s*%)$/)
+      if (percent && !/0\.9\s*%/.test(percent[2])) lastChoicePercent = percent[2]
+      continue
+    }
+    for (const token of explodeLabLine(rawLine)) {
+      if (isLabValueLine(token) || isLabSection(token) || (isLabNameLine(token) && token.split(' ').length <= 5)) {
+        tokens.push(token)
+      }
+    }
+  }
+  if (lastChoicePercent && tokens.some((token) => /\/mm³|\/hpf|mEq\/L/i.test(token))) {
+    const firstValue = tokens.findIndex((token) => isLabValueLine(token))
+    if (firstValue >= 0) tokens.splice(firstValue, 0, lastChoicePercent)
+    else tokens.push(lastChoicePercent)
+  }
+
+  const labeled = labelBareAbg(tokens)
+  const paired = pairLabTokens(labeled)
+  const leftover = tidyLeftover(leftoverProse(body))
+  return [prefix, header, ...paired, leftover, whichLine ? `\n${whichLine}` : ''].filter(Boolean).join('\n')
+}
