@@ -2,9 +2,7 @@
 
 A **local macOS** practice-test app. You supply your own question PDFs and matching answer/explanation PDFs. Parsing, timing, review, and notes stay on this computer. Nothing is uploaded to a server.
 
-This project is **not affiliated with, endorsed by, or a reproduction of** the NBME, USMLE, or any other exam board. Do not commit or share copyrighted exam forms, answer keys, or official lab-value sheets.
-
-The GitHub repository is **private**. A link is not enough: GitHub will show 404 until the owner **invites you as a collaborator** (Settings → Collaborators).
+This project is **not affiliated with, endorsed by, or a reproduction of** the NBME, USMLE, or any other exam board. 
 
 ---
 
@@ -59,7 +57,7 @@ npm run dev
 
 ## Laboratory values PDF (optional)
 
-A lab sheet is **not** required and is **not** in this repo. Find a **publicly available** laboratory reference-ranges PDF (for example from a university, hospital, or other openly published source you are allowed to use). Do not use copyrighted exam-board lab tables.
+A lab sheet is **not** required and is **not** in this repo. Find a **publicly available** laboratory reference-ranges PDF (for example from a university, hospital, or other openly published source you are allowed to use).
 
 ### In the app (easiest)
 
