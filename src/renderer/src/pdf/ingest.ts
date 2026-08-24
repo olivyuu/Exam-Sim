@@ -1,6 +1,7 @@
 import type { PDFPageProxy } from 'pdfjs-dist'
 import { assembleSet, needsOcr, type ParsedPage } from '../../../parser/examParser'
 import { joinPdfTextItems } from '../../../parser/pdfText'
+import { refineWithVisualPage, shouldCheckVisual } from '../../../parser/visualMatch'
 import type { FileMeta, ParseProgress, Question, QuestionImage } from '../../../shared/types'
 import { createId } from '../../../shared/files'
 import { loadPdfDocument } from './pdfjs'
@@ -174,6 +175,16 @@ async function extractPages(
   return pages
 }
 
+async function ocrDataUrl(dataUrl: string): Promise<string> {
+  const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+  if (!base64 || typeof window === 'undefined' || !window.practiceExam?.ocrImage) return ''
+  try {
+    return await window.practiceExam.ocrImage(base64)
+  } catch {
+    return ''
+  }
+}
+
 export async function ingestPair(
   questionPdf: FileMeta,
   answerPdf: FileMeta,
@@ -192,13 +203,25 @@ export async function ingestPair(
   const questionDoc = await loadDocument(questionPdf.path)
   const questions: Question[] = []
   for (let index = 0; index < assembled.questions.length; index++) {
-    const draft = assembled.questions[index]
+    let draft = assembled.questions[index]
     const questionImages: QuestionImage[] = []
     let pageImageDataUrl: string | undefined
+    const checkVisual = shouldCheckVisual(draft)
+    onProgress({
+      stage: checkVisual ? 'Comparing to original page' : 'Preparing questions',
+      current: index + 1,
+      total: assembled.questions.length,
+      detail: `Item ${draft.sourceItemNumber}`
+    })
     try {
       const page = await questionDoc.getPage(draft.sourceQuestionPage ?? index + 1)
       const canvas = await renderPagePng(page, 1.45)
-      pageImageDataUrl = (await cropQuestionPage(page, canvas)).dataUrl
+      const crop = await cropQuestionPage(page, canvas)
+      pageImageDataUrl = crop.dataUrl
+      if (checkVisual) {
+        const visualText = await ocrDataUrl(crop.dataUrl)
+        if (visualText.trim()) draft = refineWithVisualPage(draft, visualText)
+      }
       if (draft.needsTableImage) {
         const table =
           (await cropByTextMarkers(

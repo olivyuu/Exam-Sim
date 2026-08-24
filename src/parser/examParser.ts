@@ -5,7 +5,7 @@ import {
   isLabValueLine,
   peelLabTail
 } from './labFormat'
-import { collapseBrokenPdfSpaces } from './pdfText'
+import { collapseBrokenPdfSpaces, looksLikeSpacedGlyphText } from './pdfText'
 
 export {
   formatEmbeddedLabs,
@@ -1226,5 +1226,8 @@ export function textQualityScore(text: string): number {
 }
 
 export function needsOcr(text: string): boolean {
-  return textQualityScore(stripChrome(text)) < 80
+  const stripped = stripChrome(text.replace(/\u00a0/g, ' '))
+  const letters = (stripped.match(/[A-Za-z]/g) ?? []).length
+  if (letters < 80) return true
+  return looksLikeSpacedGlyphText(stripped)
 }

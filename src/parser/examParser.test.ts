@@ -7,6 +7,7 @@ import {
   parseAnswerPage,
   parseQuestionPage,
   qcStemAgainstSource,
+  needsOcr,
   splitChoices,
   stripChrome,
   stripFooterJunk
@@ -71,6 +72,12 @@ describe('examParser', () => {
     expect(parsed?.questionStem).not.toMatch(/hr 59 min/)
     expect(parsed?.answerChoices.map((c) => c.label)).toEqual(['A', 'B', 'C', 'D', 'E'])
     expect(parsed?.answerChoices[2].text).toMatch(/Iron studies/)
+  })
+
+  it('OCRs pages when the text layer is letter-spaced junk even if it has many letters', () => {
+    const spaced = Array.from({ length: 40 }, (_, i) => `wo rd${i} nu mb ness`).join(' ')
+    expect(needsOcr(SAMPLE_QUESTION)).toBe(false)
+    expect(needsOcr(spaced)).toBe(true)
   })
 
   it('does not keep leftover choices that appear before the first item of a PDF', () => {
