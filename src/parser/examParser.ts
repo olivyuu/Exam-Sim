@@ -369,6 +369,8 @@ function applyChoiceMarkup(text: string): string {
     .replace(INLINE_DOT_CHOICE, '\n$1. ')
     .replace(/(?<=[a-z0-9%.])([A-Pa-p])\s*\)(?=\s*[A-Z(])/g, '\n$1) ')
     .replace(/(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(?=[A-Za-z(])/g, '\n$1) ')
+    .replace(/\)[ \t]*([B-Pa-p])\s*\)/g, ')\n$1) ')
+    .replace(/(?<=\S)\s+[O0]\s+(?=[A-Z][a-z]{2,})/g, '\n')
 }
 
 function prepareForChoiceParse(text: string): { text: string; restore: (value: string) => string } {
@@ -458,7 +460,9 @@ function splitChoicesOnPrepared(prepared: string): { stem: string; choices: { la
     choices.push({ label, text })
   }
 
-  const lastReal = findLastRealChoice(dropExplanationChoices(explodeMergedChoices(choices)))
+  const lastReal = findLastRealChoice(
+    repairTwoColumnChoices(dropExplanationChoices(explodeMergedChoices(choices)))
+  )
   return {
     stem: tidyStem(stem.replace(/^\d{1,3}\.\s*/, '').trim()),
     choices: normalizeChoices(lastReal)
@@ -507,7 +511,7 @@ function explodeMergedChoices(
   choices: { label: string; text: string }[]
 ): { label: string; text: string }[] {
   const out: { label: string; text: string }[] = []
-  const embedded = /(?:\s+[O0Q•·*]\s*|\s+)([A-Pa-p])\s*[\)\.]\s+(?=[A-Z0-9("])/g
+  const embedded = /(?:^|\s+[O0Q•·*]\s*|\s+)([A-Pa-p])\s*[\)\.]\s+(?=[A-Z0-9("])/g
   for (const choice of choices) {
     const matches = [...choice.text.matchAll(new RegExp(embedded.source, 'g'))].filter((match) => {
       const before = choice.text.slice(Math.max(0, (match.index ?? 0) - 12), match.index)
@@ -543,6 +547,93 @@ function trimChoiceExplanation(text: string): string {
   const graph = text.search(/\s+(?:cij\s*>|(?:\d{2,}\s+){3,}|Years\s+\d)/i)
   if (graph > 12) text = text.slice(0, graph).trim()
   return stripFooterJunk(text)
+}
+
+function stripChoiceBubbles(text: string): string {
+  return text
+    .replace(/^[O0○●□■✓✔✗✘xXQ•·*]+\s*/g, '')
+    .replace(/\s+[O0]+,?\s*$/g, '')
+    .replace(/^\s*[A-Pa-p]\s*[).]\s*/g, '')
+    .trim()
+}
+
+function splitGluedChoicePhrases(text: string): string[] {
+  const cleaned = stripChoiceBubbles(text)
+  if (!cleaned) return []
+  const byBreak = cleaned
+    .split(/\s+[O0]+\s+|\n+(?=[A-Z][a-z]{3,})/)
+    .map((part) => stripChoiceBubbles(part.replace(/\s+/g, ' ')))
+    .filter((part) => part && !/^[,.]+$/.test(part))
+  const expanded = byBreak.flatMap((part) => splitTitleCaseChoice(part))
+  return expanded.length > 0 ? expanded : [cleaned.replace(/\s+/g, ' ').trim()].filter(Boolean)
+}
+
+function looksLikeLabNameList(text: string): boolean {
+  if (
+    /^(Protein|WBC|RBC|Na\+|K\+|Cl-|Casts|Glucose|Hematocrit|Leukocyte|Creatinine|BUN|pH)\b/i.test(
+      text.trim()
+    )
+  ) {
+    return true
+  }
+  const words = text.split(/\s+/).filter((word) => /[A-Za-z]/.test(word))
+  const lab = words.filter((word) =>
+    /^(Protein|WBC|RBC|Na\+|K\+|Cl-|Casts|Glucose|Hematocrit|Leukocyte|Creatinine|BUN|pH)$/i.test(word)
+  ).length
+  return lab >= 1 && words.length > 0 && lab >= Math.ceil(words.length * 0.5)
+}
+
+function splitTitleCaseChoice(text: string): string[] {
+  const inner = text.search(/\s+[A-Z][a-z]{3,}/)
+  if (inner < 8) return [text]
+  const left = text.slice(0, inner).trim()
+  const right = text.slice(inner).trim()
+  if (looksLikeLabNameList(right)) return [text]
+  const leftWords = left.split(/\s+/).filter(Boolean)
+  const rightWords = right.split(/\s+/).filter(Boolean)
+  const leftOk =
+    (leftWords.length >= 2 && /[a-z]{3,}$/.test(left)) || (leftWords.length === 1 && left.length >= 12)
+  if (!leftOk || right.length < 6) return [text]
+  if (rightWords.length === 1 && right.length < 8) return [text]
+  return [left, right]
+}
+
+function mergeChoiceFragments(parts: string[]): string[] {
+  const out: string[] = []
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index]
+    const next = parts[index + 1]
+    if (/^(?:of|or)\s+/i.test(part) && next) {
+      out.push(`${next} ${part}`)
+      index++
+      continue
+    }
+    out.push(part)
+  }
+  return out
+}
+
+function needsTwoColumnRepair(choices: { label: string; text: string }[]): boolean {
+  if (choices.length < 2) return false
+  return choices.some((choice) => {
+    const text = choice.text.trim()
+    if (/\s+[O0]+(?:\s|,|$)/.test(text) || /(?:^|\s)[O0],?\s*$/.test(text)) return true
+    if (/^\s*[A-Pa-p]\s*[).]/.test(text)) return true
+    if (/\s+[A-Pa-p]\s*[).]\s+[A-Z]/.test(text)) return true
+    return splitGluedChoicePhrases(text).length > 1
+  })
+}
+
+function repairTwoColumnChoices(
+  choices: { label: string; text: string }[]
+): { label: string; text: string }[] {
+  if (!needsTwoColumnRepair(choices)) return choices
+  const phrases = mergeChoiceFragments(choices.flatMap((choice) => splitGluedChoicePhrases(choice.text)))
+  if (phrases.length < 4 || phrases.length < choices.length) return choices
+  return phrases.map((text, index) => ({
+    label: String.fromCharCode(65 + index),
+    text
+  }))
 }
 
 function sortChoices(
@@ -856,7 +947,7 @@ function filledChoiceCount(choices: { label: string; text: string }[]): number {
 function looksLikeQuestionChoices(choices: { label: string; text: string }[]): boolean {
   const filled = choices.filter((choice) => choice.text.trim().length > 2)
   if (filled.length < 2) return false
-  if (!/^[A-F]+$/.test(filled.map((choice) => choice.label).join(''))) return false
+  if (!/^[A-P]+$/.test(filled.map((choice) => choice.label).join(''))) return false
   if (filled[0].label !== 'A') return false
   const explanationLike = filled.filter((choice) =>
     /correct\s*answer|incorrect answers|educational objective|this option is|\bis incorrect\b/i.test(choice.text)

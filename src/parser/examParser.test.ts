@@ -186,6 +186,90 @@ A)Cellulitis B)Erysipelas C)Folliculitis D)Impetigo E)Necrotizing fasciitis`,
     ])
   })
 
+  it('repairs two-column OCR that glues the right option on with a 0 bubble', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 51 of 100
+51. A 42-year-old man has greasy scaling of the scalp. Which of the following is the most likely diagnosis?
+A) Exfoliate dermatitis 0
+B) Lichen simplex chronicus Pediculosis capitis
+C) D) Psoriasis
+E) Seborrheic dermatitis 0`,
+      51
+    )
+    expect(parsed?.answerChoices.map((c) => `${c.label}) ${c.text}`)).toEqual([
+      'A) Exfoliate dermatitis',
+      'B) Lichen simplex chronicus',
+      'C) Pediculosis capitis',
+      'D) Psoriasis',
+      'E) Seborrheic dermatitis'
+    ])
+  })
+
+  it('repairs two-column OCR when a later option starts with D)', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 52 of 100
+52. A 24-year-old man has a recurrent groin rash. Which of the following is the most likely cause of this patient's recurrent infection?
+A) Autoinfection 0
+B) Clotrimazole resistance Impaired cellular immunity
+C) D) Impaired humoral immunity
+E) Reinfection from a sexual partner 0,`,
+      52
+    )
+    expect(parsed?.answerChoices.map((c) => `${c.label}) ${c.text}`)).toEqual([
+      'A) Autoinfection',
+      'B) Clotrimazole resistance',
+      'C) Impaired cellular immunity',
+      'D) Impaired humoral immunity',
+      'E) Reinfection from a sexual partner'
+    ])
+  })
+
+  it('splits 0-glued pairs and swallowed H) on a longer scanned list', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 54 of 100
+54. A 72-year-old woman has high blood pressure. Which of the following is the most likely diagnosis?
+A) Acute glomerulonephritis 0 Acute porphyria
+B) Coarctation of the aorta
+C) D) Cushing syndrome
+E) Hyperaldosteronism 0 Hyperparathyroidism
+F) Hyperthyroidism
+G) H) Pheochromocytoma
+I) Renal artery stenosis 0,`,
+      54
+    )
+    expect(parsed?.answerChoices.map((c) => `${c.label}) ${c.text}`)).toEqual([
+      'A) Acute glomerulonephritis',
+      'B) Acute porphyria',
+      'C) Coarctation of the aorta',
+      'D) Cushing syndrome',
+      'E) Hyperaldosteronism',
+      'F) Hyperparathyroidism',
+      'G) Hyperthyroidism',
+      'H) Pheochromocytoma',
+      'I) Renal artery stenosis'
+    ])
+  })
+
+  it('rejoins an OCR fragment that was split after a 0 bubble', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 58 of 100
+58. A 55-year-old man is in a coma. Which of the following is the most appropriate initial step in management?
+A) Administration of digitalis 0 of verapamil
+B) Administration
+C) Carotid sinus massage
+D) Direct current countershock
+E) External pacing 0,`,
+      58
+    )
+    expect(parsed?.answerChoices.map((c) => `${c.label}) ${c.text}`)).toEqual([
+      'A) Administration of digitalis',
+      'B) Administration of verapamil',
+      'C) Carotid sinus massage',
+      'D) Direct current countershock',
+      'E) External pacing'
+    ])
+  })
+
   it('parses a correct answer letter and explanation', () => {
     const parsed = parseAnswerPage(SAMPLE_ANSWER, 2)
     expect(parsed?.correctAnswer).toBe('C')
