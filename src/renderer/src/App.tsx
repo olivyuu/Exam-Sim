@@ -6,6 +6,7 @@ import { ExamMatrixScreen } from './screens/ExamMatrixScreen'
 import { EndConfirmScreen } from './screens/EndConfirmScreen'
 import { ReviewScreen } from './screens/ReviewScreen'
 import { ExportFlow } from './screens/ExportFlow'
+import { PauseOverlay } from './components/PauseOverlay'
 import { useExamStore } from './store'
 import { useExamHotkeys } from './useExamHotkeys'
 
@@ -41,6 +42,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { message: string
 
 function ExamApp() {
   const phase = useExamStore((s) => s.phase)
+  const timerPaused = useExamStore((s) => s.timerPaused)
   const setLabSheet = useExamStore((s) => s.setLabSheet)
   useExamHotkeys()
 
@@ -53,11 +55,24 @@ function ExamApp() {
 
   if (phase === 'setup') return <SetupScreen />
   if (phase === 'importReview') return <ImportReviewScreen />
-  if (phase === 'exam') return <ExamScreen />
-  if (phase === 'examReview') return <ExamMatrixScreen />
-  if (phase === 'endConfirm') return <EndConfirmScreen />
-  if (phase === 'review') return <ReviewScreen />
-  return <ExportFlow />
+  const exam =
+    phase === 'exam' ? (
+      <ExamScreen />
+    ) : phase === 'examReview' ? (
+      <ExamMatrixScreen />
+    ) : phase === 'endConfirm' ? (
+      <EndConfirmScreen />
+    ) : phase === 'review' ? (
+      <ReviewScreen />
+    ) : (
+      <ExportFlow />
+    )
+  return (
+    <>
+      {exam}
+      {timerPaused ? <PauseOverlay /> : null}
+    </>
+  )
 }
 
 export default function App() {

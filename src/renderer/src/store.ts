@@ -24,6 +24,8 @@ interface Actions {
   parseAndReview: () => Promise<void>
   startExam: () => void
   tick: () => void
+  pauseTimer: () => void
+  resumeTimer: () => void
   goTo: (index: number) => void
   next: () => void
   prev: () => void
@@ -253,6 +255,7 @@ export const useExamStore = create<SessionState & Actions>((set, get) => ({
       phase: 'exam',
       currentIndex: 0,
       timerRunning: true,
+      timerPaused: false,
       secondsRemaining: totalTestSeconds(questions.length),
       labOpen: false,
       notesOpen: false,
@@ -274,6 +277,7 @@ export const useExamStore = create<SessionState & Actions>((set, get) => ({
         questions,
         secondsRemaining: 0,
         timerRunning: false,
+        timerPaused: false,
         phase: 'review',
         reviewOpen: false,
         labOpen: false
@@ -282,6 +286,25 @@ export const useExamStore = create<SessionState & Actions>((set, get) => ({
       return
     }
     set({ secondsRemaining: secondsRemaining - 1 })
+  },
+
+  pauseTimer: () => {
+    const { phase } = get()
+    if (phase !== 'exam' && phase !== 'examReview' && phase !== 'endConfirm') return
+    set({
+      timerRunning: false,
+      timerPaused: true,
+      labOpen: false,
+      notesOpen: false,
+      calculatorOpen: false
+    })
+  },
+
+  resumeTimer: () => {
+    const { phase, timerPaused } = get()
+    if (!timerPaused) return
+    if (phase !== 'exam' && phase !== 'examReview' && phase !== 'endConfirm') return
+    set({ timerRunning: true, timerPaused: false })
   },
 
   goTo: (index) => {
@@ -374,6 +397,7 @@ export const useExamStore = create<SessionState & Actions>((set, get) => ({
       questions,
       phase: 'review',
       timerRunning: false,
+      timerPaused: false,
       reviewOpen: false,
       labOpen: false,
       reviewFilter: 'all'

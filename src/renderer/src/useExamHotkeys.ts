@@ -11,6 +11,8 @@ export function useExamHotkeys() {
   const setLabOpen = useExamStore((s) => s.setLabOpen)
   const chooseLabSheet = useExamStore((s) => s.chooseLabSheet)
   const notesOpen = useExamStore((s) => s.notesOpen)
+  const timerPaused = useExamStore((s) => s.timerPaused)
+  const resumeTimer = useExamStore((s) => s.resumeTimer)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -18,6 +20,13 @@ export function useExamHotkeys() {
       const typing =
         target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
       if (typing || notesOpen) return
+      if (timerPaused) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          resumeTimer()
+        }
+        return
+      }
       if (phase !== 'exam' && phase !== 'review' && phase !== 'examReview') return
       if (event.key === 'ArrowRight') {
         event.preventDefault()
@@ -41,5 +50,5 @@ export function useExamHotkeys() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, next, prev, toggleFlag, labOpen, labSheet, setLabOpen, chooseLabSheet, notesOpen])
+  }, [phase, next, prev, toggleFlag, labOpen, labSheet, setLabOpen, chooseLabSheet, notesOpen, timerPaused, resumeTimer])
 }

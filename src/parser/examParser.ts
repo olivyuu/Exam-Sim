@@ -24,8 +24,14 @@ const ITEM_HEADER =
 
 const NUMBERED_STEM = /(?:^|\n)\s*(\d{1,3})\.\s+(?=[A-Z0-9])/
 
-const CHOICE_SPLIT = /(?:^|\n)\s*(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(\s+)/g
+const CHOICE_SPLIT = /(?:^|\n)\s*(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(\s*)/g
 const CHOICE_DOT_SPLIT = /(?:^|\n)\s*(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\.(\s+)/g
+const INLINE_CHOICE =
+  /(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(?=\s+\S)/g
+const INLINE_DOT_CHOICE =
+  /(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\.(?=\s+[A-Z(])/g
+const AFTER_VIGNETTE_CHOICE =
+  /(?:^|\n)\s*(?:[O0○●□■Q•·*]\s*)?[A-Pa-p]\s*[\)\.]/
 
 const CORRECT_PATTERNS = [
   /correct\s*answer\s*:\s*([A-P])\b/i,
@@ -335,6 +341,8 @@ function normalizeChoiceMarkup(text: string): string {
       /((?:^|\n)\s*(?:[O0•·*]\s*)?H\s*[).][^\n]*)\n(\s*(?:[O0•·*]\s*)?)[1l](\s*[).])/gi,
       '$1\n$2I$3'
     )
+    .replace(INLINE_CHOICE, '\n$1) ')
+    .replace(INLINE_DOT_CHOICE, '\n$1. ')
 }
 
 function isPercentChoice(text: string): boolean {
@@ -454,7 +462,7 @@ function explodeMergedChoices(
   choices: { label: string; text: string }[]
 ): { label: string; text: string }[] {
   const out: { label: string; text: string }[] = []
-  const embedded = /\s+[O0Q•·*]\s*([A-Pa-p])\s*[\)\.]\s+/g
+  const embedded = /(?:\s+[O0Q•·*]\s*|\s+)([A-Pa-p])\s*[\)\.]\s+(?=[A-Z0-9("])/g
   for (const choice of choices) {
     const matches = [...choice.text.matchAll(new RegExp(embedded.source, 'g'))]
     if (matches.length === 0) {
@@ -572,16 +580,21 @@ export function recoverQuestionLayout(
     return { stem, choices: nextChoices, needsLabImage: false }
   }
 
-  if (vignette && vignette.index > 0 && firstChoice >= 0 && vignette.index > firstChoice) {
+  const afterSlice =
+    vignette && vignette.index !== undefined
+      ? stripExplanationFromStem(junkFree.slice(vignette.index).replace(/^\s*\d{1,3}\.\s+/, ''))
+      : ''
+  const afterHasOwnChoices = AFTER_VIGNETTE_CHOICE.test(afterSlice)
+
+  if (vignette && vignette.index > 0 && firstChoice >= 0 && vignette.index > firstChoice && !afterHasOwnChoices) {
     const before = junkFree.slice(0, vignette.index)
-    const after = stripExplanationFromStem(
-      junkFree.slice(vignette.index).replace(/^\s*\d{1,3}\.\s+/, '')
-    )
     const parsed = splitChoices(before)
-    return finish([parsed.stem, after].filter(Boolean).join('\n\n'), parsed.choices)
+    return finish([parsed.stem, afterSlice].filter(Boolean).join('\n\n'), parsed.choices)
   }
 
-  const parsed = splitChoices(junkFree)
+  const body =
+    vignette && vignette.index !== undefined && afterHasOwnChoices ? junkFree.slice(vignette.index) : junkFree
+  const parsed = splitChoices(body)
   return finish(parsed.stem, parsed.choices)
 }
 
@@ -775,6 +788,35 @@ export function parseAnswerPage(text: string, pageNumber: number): ParsedQuestio
   }
 }
 
+function filledChoiceCount(choices: { label: string; text: string }[]): number {
+  return choices.filter((choice) => choice.text.trim().length > 2).length
+}
+
+function looksLikeQuestionChoices(choices: { label: string; text: string }[]): boolean {
+  const filled = choices.filter((choice) => choice.text.trim().length > 2)
+  if (filled.length < 2) return false
+  if (!/^[A-F]+$/.test(filled.map((choice) => choice.label).join(''))) return false
+  if (filled[0].label !== 'A') return false
+  const explanationLike = filled.filter((choice) =>
+    /correct\s*answer|incorrect answers|educational objective|this option is|\bis incorrect\b/i.test(choice.text)
+  ).length
+  const long = filled.filter((choice) => choice.text.length > 180).length
+  return explanationLike === 0 && long < Math.ceil(filled.length * 0.6)
+}
+
+function pickMergedChoices(question: ParsedQuestionDraft, answer: ParsedQuestionDraft): { label: string; text: string }[] {
+  if (question.needsTableImage) return question.answerChoices
+  if (looksLikeQuestionChoices(question.answerChoices)) return question.answerChoices
+  if (
+    filledChoiceCount(answer.answerChoices) > filledChoiceCount(question.answerChoices) &&
+    looksLikeQuestionChoices(answer.answerChoices) &&
+    choiceQuality(answer.answerChoices) > choiceQuality(question.answerChoices)
+  ) {
+    return answer.answerChoices
+  }
+  return question.answerChoices.length >= 2 ? question.answerChoices : answer.answerChoices
+}
+
 function choiceQuality(choices: { label: string; text: string }[]): number {
   const filled = choices.filter((choice) => choice.text.trim().length > 2).length
   let penalty = 0
@@ -802,11 +844,7 @@ export function mergeQuestionAndAnswer(
     }
   }
 
-  const qChoices = question.needsTableImage
-    ? question.answerChoices
-    : choiceQuality(question.answerChoices) >= choiceQuality(answer.answerChoices)
-      ? question.answerChoices
-      : answer.answerChoices
+  const qChoices = pickMergedChoices(question, answer)
 
   const qStem = stripExplanationFromStem(question.questionStem)
   const aStem = stripExplanationFromStem(answer.questionStem ?? '')
@@ -849,14 +887,19 @@ function coalesceQuestionDrafts(drafts: ParsedQuestionDraft[]): ParsedQuestionDr
       continue
     }
     const betterChoices =
-      choiceQuality(draft.answerChoices) > choiceQuality(existing.answerChoices)
+      looksLikeQuestionChoices(draft.answerChoices) && !looksLikeQuestionChoices(existing.answerChoices)
         ? draft.answerChoices
-        : existing.answerChoices
+        : looksLikeQuestionChoices(existing.answerChoices) && !looksLikeQuestionChoices(draft.answerChoices)
+          ? existing.answerChoices
+          : filledChoiceCount(draft.answerChoices) > filledChoiceCount(existing.answerChoices)
+            ? draft.answerChoices
+            : existing.answerChoices
     const betterStem =
-      (draft.questionStem.replace(/\s+/g, ' ').length >
-        existing.questionStem.replace(/\s+/g, ' ').length
+      draft.questionStem.replace(/\s+/g, ' ').length > existing.questionStem.replace(/\s+/g, ' ').length
         ? draft.questionStem
-        : existing.questionStem)
+        : existing.questionStem
+    const stemFromDraft =
+      draft.questionStem.replace(/\s+/g, ' ').length > existing.questionStem.replace(/\s+/g, ' ').length
     byItem.set(draft.sourceItemNumber, {
       ...existing,
       questionStem: stripExplanationFromStem(betterStem),
@@ -868,7 +911,9 @@ function coalesceQuestionDrafts(drafts: ParsedQuestionDraft[]): ParsedQuestionDr
       needsTableImage: existing.needsTableImage || draft.needsTableImage,
       needsLabImage: existing.needsLabImage || draft.needsLabImage,
       usedOriginalImage: existing.usedOriginalImage || draft.usedOriginalImage,
-      sourceQuestionPage: existing.sourceQuestionPage ?? draft.sourceQuestionPage
+      sourceQuestionPage: stemFromDraft
+        ? draft.sourceQuestionPage ?? existing.sourceQuestionPage
+        : existing.sourceQuestionPage ?? draft.sourceQuestionPage
     })
   }
   return [...[...byItem.values()].sort((a, b) => a.sourceItemNumber - b.sourceItemNumber), ...leftovers]

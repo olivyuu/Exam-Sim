@@ -12,6 +12,9 @@ export function ExamHeader({
   const questions = useExamStore((s) => s.questions)
   const currentIndex = useExamStore((s) => s.currentIndex)
   const secondsRemaining = useExamStore((s) => s.secondsRemaining)
+  const timerPaused = useExamStore((s) => s.timerPaused)
+  const pauseTimer = useExamStore((s) => s.pauseTimer)
+  const resumeTimer = useExamStore((s) => s.resumeTimer)
   const labOpen = useExamStore((s) => s.labOpen)
   const notesOpen = useExamStore((s) => s.notesOpen)
   const calculatorOpen = useExamStore((s) => s.calculatorOpen)
@@ -61,6 +64,13 @@ export function ExamHeader({
         <div className={`timer ${critical ? 'critical' : warn ? 'warn' : ''}`}>
           Time Remaining
           <div>{formatClock(secondsRemaining)}</div>
+          <button
+            className="pause-btn"
+            type="button"
+            onClick={timerPaused ? resumeTimer : pauseTimer}
+          >
+            {timerPaused ? 'Resume' : 'Pause'}
+          </button>
         </div>
       ) : (
         <div className="timer">Review</div>

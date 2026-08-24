@@ -73,6 +73,19 @@ describe('exam store interactions', () => {
     expect(useExamStore.getState().secondsRemaining).toBe(0)
   })
 
+  it('pauses the timer without ending the exam', () => {
+    useExamStore.getState().pauseTimer()
+    expect(useExamStore.getState().timerPaused).toBe(true)
+    expect(useExamStore.getState().timerRunning).toBe(false)
+    expect(useExamStore.getState().phase).toBe('exam')
+    const remaining = useExamStore.getState().secondsRemaining
+    useExamStore.getState().tick()
+    expect(useExamStore.getState().secondsRemaining).toBe(remaining)
+    useExamStore.getState().resumeTimer()
+    expect(useExamStore.getState().timerPaused).toBe(false)
+    expect(useExamStore.getState().timerRunning).toBe(true)
+  })
+
   it('keeps test-taking mode from Review Questions until End Exam is confirmed', () => {
     useExamStore.getState().openExamReview()
     expect(useExamStore.getState().phase).toBe('examReview')

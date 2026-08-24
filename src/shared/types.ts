@@ -100,6 +100,7 @@ export interface SessionState {
   currentIndex: number
   secondsRemaining: number
   timerRunning: boolean
+  timerPaused: boolean
   labSheet: FileMeta | null
   labOpen: boolean
   notesOpen: boolean
@@ -119,6 +120,7 @@ export function emptySession(): SessionState {
     currentIndex: 0,
     secondsRemaining: 0,
     timerRunning: false,
+    timerPaused: false,
     labSheet: null,
     labOpen: false,
     notesOpen: false,

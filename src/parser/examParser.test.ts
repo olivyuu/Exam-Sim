@@ -73,6 +73,48 @@ describe('examParser', () => {
     expect(parsed?.answerChoices[2].text).toMatch(/Iron studies/)
   })
 
+  it('does not keep leftover choices that appear before the first item of a PDF', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 1 of 50
+O D) Leftover from the previous form
+O E) Another leftover choice
+1. A 45-year-old man comes to the office because of fatigue for 2 months. Which of the following is the most appropriate next step?
+O A) Observation
+O B) Bone marrow biopsy
+O C) Iron studies
+O D) Chest radiography
+O E) Reassurance
+Next`,
+      1
+    )
+    expect(parsed?.answerChoices.map((c) => c.label)).toEqual(['A', 'B', 'C', 'D', 'E'])
+    expect(parsed?.answerChoices.map((c) => c.text)).toEqual([
+      'Observation',
+      'Bone marrow biopsy',
+      'Iron studies',
+      'Chest radiography',
+      'Reassurance'
+    ])
+  })
+
+  it('splits answer choices that were OCR’d onto the same line', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 1 of 50
+1. A 45-year-old man comes to the office because of fatigue for 2 months. Which of the following is the most appropriate next step?
+O A) Observation O B) Bone marrow biopsy
+O C) Iron studies O D) Chest radiography
+O E) Reassurance`,
+      1
+    )
+    expect(parsed?.answerChoices.map((c) => `${c.label}) ${c.text}`)).toEqual([
+      'A) Observation',
+      'B) Bone marrow biopsy',
+      'C) Iron studies',
+      'D) Chest radiography',
+      'E) Reassurance'
+    ])
+  })
+
   it('parses a correct answer letter and explanation', () => {
     const parsed = parseAnswerPage(SAMPLE_ANSWER, 2)
     expect(parsed?.correctAnswer).toBe('C')

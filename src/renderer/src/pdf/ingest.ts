@@ -24,6 +24,7 @@ function itemsToText(items: Array<{ str?: string; transform?: number[] }>): stri
   const lines: string[] = []
   let line = ''
   let lastY: number | null = null
+  let lastX: number | null = null
   for (const item of rows) {
     const superscript =
       lastY !== null &&
@@ -34,7 +35,14 @@ function itemsToText(items: Array<{ str?: string; transform?: number[] }>): stri
       line += item.str === '3' ? '³' : item.str
       continue
     }
-    if (lastY !== null && Math.abs(item.y - lastY) > 3.5) {
+    const newLine = lastY !== null && Math.abs(item.y - lastY) > 3.5
+    const twoColumnChoice =
+      !newLine &&
+      line.length > 0 &&
+      lastX !== null &&
+      item.x - lastX > 70 &&
+      /^(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?[A-Pa-p]\s*[).]/.test(item.str.trim())
+    if (newLine || twoColumnChoice) {
       lines.push(line)
       line = item.str
     } else {
@@ -42,6 +50,7 @@ function itemsToText(items: Array<{ str?: string; transform?: number[] }>): stri
       line += (needsSpace ? ' ' : '') + item.str
     }
     lastY = item.y
+    lastX = item.x
   }
   if (line) lines.push(line)
   return lines.join('\n')
@@ -117,30 +126,30 @@ async function cropByTextMarkers(
   )
 }
 
-async function cropQuestionStem(page: PDFPageProxy, source: HTMLCanvasElement): Promise<QuestionImage | null> {
+async function cropQuestionPage(page: PDFPageProxy, source: HTMLCanvasElement): Promise<QuestionImage> {
   const viewport = page.getViewport({ scale: 1 })
   const content = await page.getTextContent()
-  let startY: number | null = null
-  let endY: number | null = null
+  let headerBottom = 0.05
+  let footerTop = 0.97
   for (const item of content.items as Array<{ str?: string; transform?: number[] }>) {
     if (!item.str || !item.transform) continue
     const text = item.str.trim()
     if (!text) continue
     const [, y] = viewport.convertToViewportPoint(item.transform[4], item.transform[5])
     const ratio = y / viewport.height
-    if (startY === null && /^(?:\d{1,3}\.\s+)?(?:A\s+\d|An?\s+[A-Z]|The\s+[a-z]|For each|Laboratory|Serum)/.test(text)) {
-      startY = ratio
+    if (
+      /^(exam section|item\s+\d|time remaining|mark|national board|medicine self-assessment)$/i.test(text) ||
+      /^\d+\s*hr\s+\d+\s*min/i.test(text)
+    ) {
+      if (ratio < 0.28) headerBottom = Math.max(headerBottom, ratio + 0.015)
     }
-    if (/(?:^|\s)[O0Q]?\s*[A-E][\)\.](\s|$)/.test(text) || /^(Previous|Next|Lab Values)$/i.test(text)) {
-      if (endY === null && startY !== null && ratio > startY + 0.08) endY = ratio
+    if (/^(previous|next|lab values|calculator|review|help|pause)$/i.test(text) && ratio > 0.7) {
+      footerTop = Math.min(footerTop, ratio - 0.01)
     }
   }
-  const top = Math.max(0.08, (startY ?? 0.12) - 0.02)
-  const bottom = Math.min(0.88, endY ? endY - 0.01 : 0.78)
-  if (bottom <= top + 0.12) {
-    return cropCanvas(source, { left: 0.03, top: 0.1, right: 0.97, bottom: 0.8 }, 'lab')
-  }
-  return cropCanvas(source, { left: 0.03, top, right: 0.97, bottom }, 'lab')
+  const top = Math.min(Math.max(0.02, headerBottom), 0.16)
+  const bottom = Math.max(top + 0.45, Math.min(0.98, footerTop))
+  return cropCanvas(source, { left: 0.008, top, right: 0.992, bottom }, 'lab')
 }
 
 async function cropFigure(page: PDFPageProxy, source: HTMLCanvasElement): Promise<QuestionImage | null> {
@@ -225,10 +234,7 @@ export async function ingestPair(
     try {
       const page = await questionDoc.getPage(draft.sourceQuestionPage ?? index + 1)
       const canvas = await renderPagePng(page, 1.45)
-      pageImageDataUrl = (
-        (await cropQuestionStem(page, canvas)) ??
-        cropCanvas(canvas, { left: 0.03, top: 0.1, right: 0.97, bottom: 0.82 }, 'lab')
-      ).dataUrl
+      pageImageDataUrl = (await cropQuestionPage(page, canvas)).dataUrl
       if (draft.needsTableImage) {
         const table =
           (await cropByTextMarkers(
