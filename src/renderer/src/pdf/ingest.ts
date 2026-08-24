@@ -1,5 +1,6 @@
 import type { PDFPageProxy } from 'pdfjs-dist'
 import { assembleSet, needsOcr, type ParsedPage } from '../../../parser/examParser'
+import { joinPdfTextItems } from '../../../parser/pdfText'
 import type { FileMeta, ParseProgress, Question, QuestionImage } from '../../../shared/types'
 import { createId } from '../../../shared/files'
 import { loadPdfDocument } from './pdfjs'
@@ -11,56 +12,19 @@ export interface IngestResult {
   answerCount: number
 }
 
-function itemsToText(items: Array<{ str?: string; transform?: number[] }>): string {
-  const rows = items
-    .map((item) => ({
-      str: item.str ?? '',
-      x: item.transform ? item.transform[4] : 0,
-      y: item.transform ? item.transform[5] : 0
-    }))
-    .filter((item) => item.str)
-  rows.sort((left, right) => (Math.abs(right.y - left.y) > 2 ? right.y - left.y : left.x - right.x))
-
-  const lines: string[] = []
-  let line = ''
-  let lastY: number | null = null
-  let lastX: number | null = null
-  for (const item of rows) {
-    const superscript =
-      lastY !== null &&
-      /^[0-9]$/.test(item.str) &&
-      /\/mm\s*$/i.test(line) &&
-      Math.abs(item.y - lastY) < 14
-    if (superscript) {
-      line += item.str === '3' ? '³' : item.str
-      continue
-    }
-    const newLine = lastY !== null && Math.abs(item.y - lastY) > 3.5
-    const twoColumnChoice =
-      !newLine &&
-      line.length > 0 &&
-      lastX !== null &&
-      item.x - lastX > 36 &&
-      /^(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?[A-Pa-p]\s*[).]/.test(item.str.trim())
-    if (newLine || twoColumnChoice) {
-      lines.push(line)
-      line = item.str
-    } else {
-      const needsSpace = line.length > 0 && !line.endsWith(' ') && !item.str.startsWith(' ')
-      line += (needsSpace ? ' ' : '') + item.str
-    }
-    lastY = item.y
-    lastX = item.x
-  }
-  if (line) lines.push(line)
-  return lines.join('\n')
+function itemsToText(
+  items: Array<{ str?: string; transform?: number[]; width?: number; height?: number; hasEOL?: boolean }>
+): string {
+  return joinPdfTextItems(items)
 }
 
 const loadDocument = loadPdfDocument
 
 async function pageText(page: PDFPageProxy): Promise<string> {
   const content = await page.getTextContent()
-  return itemsToText(content.items as Array<{ str?: string; transform?: number[] }>)
+  return itemsToText(
+    content.items as Array<{ str?: string; transform?: number[]; width?: number; height?: number; hasEOL?: boolean }>
+  )
 }
 
 async function renderPagePng(page: PDFPageProxy, scale = 2): Promise<HTMLCanvasElement> {

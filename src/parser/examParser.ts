@@ -5,6 +5,7 @@ import {
   isLabValueLine,
   peelLabTail
 } from './labFormat'
+import { collapseBrokenPdfSpaces } from './pdfText'
 
 export {
   formatEmbeddedLabs,
@@ -62,11 +63,13 @@ export interface ParsedQuestionDraft {
 }
 
 export function cleanPageText(raw: string): string {
-  return raw
-    .replace(/\u00a0/g, ' ')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return collapseBrokenPdfSpaces(
+    raw
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
 }
 
 export function stripChrome(text: string): string {
@@ -551,7 +554,8 @@ function trimChoiceExplanation(text: string): string {
 
 function stripChoiceBubbles(text: string): string {
   return text
-    .replace(/^[O0○●□■✓✔✗✘xXQ•·*]+\s*/g, '')
+    .replace(/^[O0○●□■✓✔✗✘xXQ•·*]+\s+/g, '')
+    .replace(/^[O0○●□■✓✔✗✘xXQ•·*]$/g, '')
     .replace(/\s+[O0]+,?\s*$/g, '')
     .replace(/^\s*[A-Pa-p]\s*[).]\s*/g, '')
     .trim()

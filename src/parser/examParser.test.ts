@@ -270,6 +270,50 @@ E) External pacing 0,`,
     ])
   })
 
+  it('collapses Form 6 glyph spaces inside stems and choices', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 18 of 50
+18. A 37-year-old woman with type 1 diabetes me llitus is brought to the emergency department because of anx i ety and nu mb ness of the r ecent ly. D ur ing the past 6 months she has had nume r ous. Cran ial nerves are intact. Musc le strength is 5/5. Which of the following is the most likely diagnosis?
+A) Brachia! pl exopa t hy
+B) Ce rvica l stenosis
+C) Co nversion di sor der
+D) Diabetic polyneuro pat hy
+E) Sy ri ngomyelia`,
+      18
+    )
+    expect(parsed?.questionStem).toMatch(/diabetes mellitus/)
+    expect(parsed?.questionStem).toMatch(/anxiety/)
+    expect(parsed?.questionStem).toMatch(/numbness/)
+    expect(parsed?.questionStem).toMatch(/recently/)
+    expect(parsed?.questionStem).toMatch(/During/)
+    expect(parsed?.questionStem).toMatch(/numerous/)
+    expect(parsed?.questionStem).toMatch(/Cranial/)
+    expect(parsed?.questionStem).toMatch(/Muscle/)
+    expect(parsed?.questionStem).not.toMatch(/me llitus/)
+    expect(parsed?.answerChoices.map((c) => c.text)).toEqual([
+      'Brachial plexopathy',
+      'Cervical stenosis',
+      'Conversion disorder',
+      'Diabetic polyneuropathy',
+      'Syringomyelia'
+    ])
+  })
+
+  it('keeps Oral as a complete word instead of stripping the leading O', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 18 of 50
+18. A 62-year-old man has right leg pain. Which of the following is the most appropriate next step?
+A) Oral administration of aspirin
+B) Oral administration of warfarin
+C) Subcutaneous administration of enoxaparin
+D) CT angiography of the chest
+E) Placement of an inferior vena cava filter`,
+      18
+    )
+    expect(parsed?.answerChoices[0]?.text).toMatch(/^Oral administration of aspirin/)
+    expect(parsed?.answerChoices[1]?.text).toMatch(/^Oral administration of warfarin/)
+  })
+
   it('parses a correct answer letter and explanation', () => {
     const parsed = parseAnswerPage(SAMPLE_ANSWER, 2)
     expect(parsed?.correctAnswer).toBe('C')
