@@ -115,6 +115,77 @@ O E) Reassurance`,
     ])
   })
 
+  it('keeps Fahrenheit temperatures in the stem instead of making a fake choice F', () => {
+    const text = `Exam Section : Item 19 of 50
+19. A previously healthy 22-year-old woman comes to the physician because of a 2-day history of fever, chills, and left flank pain. She also has had nausea and vomited four times during this period. Her temperature is 38.9°C (102°F), pulse is 110/min, and blood pressure is 90/60 mm Hg. The abdomen is soft with tenderness to percussion over the left flank. The remainder of the examination shows no abnormalities. Laboratory studies show:
+Hematocrit 39%
+Leukocyte count 22,000/mm³
+Which of the following is the most appropriate pharmacotherapy?
+O A) Oral amoxicillin
+O B) Oral azithromycin
+O C) Intravenous amoxicillin
+O D) Intravenous ceftriaxone
+O E) Intravenous metronidazole`
+    const parsed = parseQuestionPage(text, 19)
+    expect(parsed?.questionStem).toMatch(/\(102°F\)/)
+    expect(parsed?.questionStem).toMatch(/pulse is 110\/min/)
+    expect(parsed?.answerChoices.map((c) => c.label)).toEqual(['A', 'B', 'C', 'D', 'E'])
+    expect(parsed?.answerChoices.map((c) => c.text).join(' ')).not.toMatch(/pulse is 110/)
+  })
+
+  it('stitches a line-wrapped Fahrenheit value so F) is not a choice', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 33 of 50
+33. Her temperature is 38.9°C (102°
+F), pulse is 110/min, and blood pressure is 90/60 mm Hg. Which of the following is the most appropriate pharmacotherapy?
+O A) Oral amoxicillin
+O B) Oral azithromycin
+O C) Intravenous amoxicillin
+O D) Intravenous ceftriaxone
+O E) Intravenous metronidazole`,
+      33
+    )
+    expect(parsed?.questionStem).toMatch(/102°\s*F/)
+    expect(parsed?.questionStem).toMatch(/pulse is 110\/min/)
+    expect(parsed?.answerChoices.map((c) => c.label)).toEqual(['A', 'B', 'C', 'D', 'E'])
+    expect(parsed?.answerChoices.find((c) => c.label === 'F')).toBeUndefined()
+  })
+
+  it('splits dense two-column choices like a later scanned form', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 1 of 50
+1. Which of the following is the most appropriate pharmacotherapy?
+A) Oral amoxicillin          B) Oral azithromycin
+C) Intravenous amoxicillin   D) Intravenous ceftriaxone
+E) Intravenous metronidazole`,
+      1
+    )
+    expect(parsed?.answerChoices.map((c) => `${c.label}) ${c.text}`)).toEqual([
+      'A) Oral amoxicillin',
+      'B) Oral azithromycin',
+      'C) Intravenous amoxicillin',
+      'D) Intravenous ceftriaxone',
+      'E) Intravenous metronidazole'
+    ])
+  })
+
+  it('splits glued same-line choices with no space after the letter', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 2 of 50
+2. Which of the following is the most likely diagnosis?
+A)Cellulitis B)Erysipelas C)Folliculitis D)Impetigo E)Necrotizing fasciitis`,
+      2
+    )
+    expect(parsed?.answerChoices.map((c) => c.label)).toEqual(['A', 'B', 'C', 'D', 'E'])
+    expect(parsed?.answerChoices.map((c) => c.text)).toEqual([
+      'Cellulitis',
+      'Erysipelas',
+      'Folliculitis',
+      'Impetigo',
+      'Necrotizing fasciitis'
+    ])
+  })
+
   it('parses a correct answer letter and explanation', () => {
     const parsed = parseAnswerPage(SAMPLE_ANSWER, 2)
     expect(parsed?.correctAnswer).toBe('C')

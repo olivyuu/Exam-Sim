@@ -331,7 +331,31 @@ export function looksLikeTableQuestion(stem: string, choices: { label: string; t
   return tableLike >= Math.ceil(choices.length * 0.6)
 }
 
-function normalizeChoiceMarkup(text: string): string {
+function stitchTemperatureWraps(text: string): string {
+  return text
+    .replace(/(\d(?:\.\d+)?\s*°)\s*\n\s*([FC])\b/gi, '$1$2')
+    .replace(/(\d(?:\.\d+)?)\s*\n\s*(°\s*[FC])\b/gi, '$1$2')
+    .replace(/(\(\s*\d(?:\.\d+)?\s*°?)\s*\n\s*([FC])\s*\)/gi, '$1$2)')
+    .replace(/(°)\s*\n\s*([FC])\s*\)/gi, '$1$2)')
+}
+
+function protectClinicalUnits(text: string): { text: string; restore: (value: string) => string } {
+  const saved: string[] = []
+  const stitched = stitchTemperatureWraps(text)
+  const masked = stitched.replace(
+    /\(\s*\d+(?:\.\d+)?\s*(?:°|deg\.?)?\s*[FC]\s*\)|\b\d+(?:\.\d+)?\s*(?:°|deg\.?)\s*[FC]\b/gi,
+    (match) => {
+      saved.push(match)
+      return `\uE000TEMP${saved.length - 1}\uE001`
+    }
+  )
+  return {
+    text: masked,
+    restore: (value) => value.replace(/\uE000TEMP(\d+)\uE001/g, (_, index) => saved[Number(index)] ?? _)
+  }
+}
+
+function applyChoiceMarkup(text: string): string {
   return text
     .replace(/\bProceed to Next Item\b[\s\S]*$/i, '')
     .replace(/\s+Full Screen\b[\s\S]*$/i, '')
@@ -343,6 +367,19 @@ function normalizeChoiceMarkup(text: string): string {
     )
     .replace(INLINE_CHOICE, '\n$1) ')
     .replace(INLINE_DOT_CHOICE, '\n$1. ')
+    .replace(/(?<=[a-z0-9%.])([A-Pa-p])\s*\)(?=\s*[A-Z(])/g, '\n$1) ')
+    .replace(/(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(?=[A-Za-z(])/g, '\n$1) ')
+}
+
+function prepareForChoiceParse(text: string): { text: string; restore: (value: string) => string } {
+  const { text: masked, restore } = protectClinicalUnits(text)
+  let marked = applyChoiceMarkup(masked)
+  for (let i = 0; i < 3; i++) {
+    const next = applyChoiceMarkup(marked)
+    if (next === marked) break
+    marked = next
+  }
+  return { text: marked, restore }
 }
 
 function isPercentChoice(text: string): boolean {
@@ -383,7 +420,15 @@ export function extractItemNumber(text: string): { item: number; of?: number } |
 }
 
 export function splitChoices(body: string): { stem: string; choices: { label: string; text: string }[] } {
-  const prepared = normalizeChoiceMarkup(body)
+  const { text: prepared, restore } = prepareForChoiceParse(body)
+  const parsed = splitChoicesOnPrepared(prepared)
+  return {
+    stem: restore(parsed.stem),
+    choices: parsed.choices.map((choice) => ({ ...choice, text: restore(choice.text) }))
+  }
+}
+
+function splitChoicesOnPrepared(prepared: string): { stem: string; choices: { label: string; text: string }[] } {
   const paren = [...prepared.matchAll(new RegExp(CHOICE_SPLIT.source, 'g'))]
   const dots = [...prepared.matchAll(new RegExp(CHOICE_DOT_SPLIT.source, 'g'))]
   const score = (matches: RegExpMatchArray[]) => new Set(matches.map((match) => match[1].toUpperCase())).size
@@ -464,7 +509,12 @@ function explodeMergedChoices(
   const out: { label: string; text: string }[] = []
   const embedded = /(?:\s+[O0Q•·*]\s*|\s+)([A-Pa-p])\s*[\)\.]\s+(?=[A-Z0-9("])/g
   for (const choice of choices) {
-    const matches = [...choice.text.matchAll(new RegExp(embedded.source, 'g'))]
+    const matches = [...choice.text.matchAll(new RegExp(embedded.source, 'g'))].filter((match) => {
+      const before = choice.text.slice(Math.max(0, (match.index ?? 0) - 12), match.index)
+      if (/[°\d]\s*$/.test(before) && /^[FCfc]$/.test(match[1])) return false
+      if (/\d(?:\.\d+)?\s*°?\s*$/.test(before) && /^[FCfc]$/.test(match[1])) return false
+      return true
+    })
     if (matches.length === 0) {
       out.push(choice)
       continue
@@ -544,7 +594,7 @@ export function recoverQuestionLayout(
   cleaned: string,
   itemNumber?: number
 ): { stem: string; choices: { label: string; text: string }[]; needsLabImage: boolean } {
-  const junkFree = normalizeChoiceMarkup(stripFooterJunk(cleaned))
+  const { text: junkFree, restore } = prepareForChoiceParse(stripFooterJunk(cleaned))
   const firstChoice = junkFree.search(/(?:^|\n)\s*(?:[O0○●□■Q•·*]\s*)?[A-Pa-p]\s*[\)\.]/)
   const marker = itemNumber
     ? new RegExp(`(?:^|\\n)\\s*${itemNumber}\\.\\s+(?=[A-Z0-9])`)
@@ -575,9 +625,20 @@ export function recoverQuestionLayout(
     if (looksLikeTableQuestion(stem, nextChoices) || looksLikeTableQuestion(junkFree, nextChoices)) {
       const cut = stem.search(/\?\s*(Specific|Gravity|WBC|RBC|$)/i)
       if (cut >= 0) stem = polishStem(stem.slice(0, cut + 1))
-      return { stem, choices: expandTableChoices(nextChoices, junkFree), needsLabImage: false }
+      return {
+        stem: restore(stem),
+        choices: expandTableChoices(nextChoices, junkFree).map((choice) => ({
+          ...choice,
+          text: restore(choice.text)
+        })),
+        needsLabImage: false
+      }
     }
-    return { stem, choices: nextChoices, needsLabImage: false }
+    return {
+      stem: restore(stem),
+      choices: nextChoices.map((choice) => ({ ...choice, text: restore(choice.text) })),
+      needsLabImage: false
+    }
   }
 
   const afterSlice =
@@ -588,13 +649,13 @@ export function recoverQuestionLayout(
 
   if (vignette && vignette.index > 0 && firstChoice >= 0 && vignette.index > firstChoice && !afterHasOwnChoices) {
     const before = junkFree.slice(0, vignette.index)
-    const parsed = splitChoices(before)
+    const parsed = splitChoicesOnPrepared(before)
     return finish([parsed.stem, afterSlice].filter(Boolean).join('\n\n'), parsed.choices)
   }
 
   const body =
     vignette && vignette.index !== undefined && afterHasOwnChoices ? junkFree.slice(vignette.index) : junkFree
-  const parsed = splitChoices(body)
+  const parsed = splitChoicesOnPrepared(body)
   return finish(parsed.stem, parsed.choices)
 }
 

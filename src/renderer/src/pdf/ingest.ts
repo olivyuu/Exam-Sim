@@ -40,7 +40,7 @@ function itemsToText(items: Array<{ str?: string; transform?: number[] }>): stri
       !newLine &&
       line.length > 0 &&
       lastX !== null &&
-      item.x - lastX > 70 &&
+      item.x - lastX > 36 &&
       /^(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?[A-Pa-p]\s*[).]/.test(item.str.trim())
     if (newLine || twoColumnChoice) {
       lines.push(line)
