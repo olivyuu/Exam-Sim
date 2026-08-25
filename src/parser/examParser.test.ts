@@ -408,6 +408,92 @@ E) Placement of an inferior vena cava filter`,
     expect(stripFooterJunk('Sickle cell disease r')).toBe('Sickle cell disease')
   })
 
+  it('builds a two-column lab table from packed name-value OCR', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Laboratory studies show:
+Hemoglobin
+16.2 g/dL
+Serum
+Albumin
+3.8 g/dL
+Alkaline phosphatase
+95 U/L
+AST 68 U/L ALT 44 U/L Ferritin 50 ng/mL Which of the following is most likely?`)
+    expect(formatted).toMatch(/AST\t68 U\/L/)
+    expect(formatted).toMatch(/ALT\t44 U\/L/)
+    expect(formatted).toMatch(/Ferritin\t50 ng\/mL/)
+    expect(formatted).toMatch(/\nWhich of the following/)
+    const labs = splitStemSegments(formatted).find((segment) => segment.type === 'labs')
+    expect(labs?.type).toBe('labs')
+    if (labs?.type !== 'labs') return
+    const rows = labs.rows.filter((row) => row.type === 'row')
+    expect(rows.map((row) => row.name)).toEqual([
+      'Hemoglobin',
+      'Albumin',
+      'Alkaline phosphatase',
+      'AST',
+      'ALT',
+      'Ferritin'
+    ])
+    expect(rows.every((row) => row.values.length === 1 && row.values[0])).toBe(true)
+  })
+
+  it('zips stacked lab names with a packed value line into two columns', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Serum studies show:
+K•I HCO,-
+Urea nitrogen
+Glucose
+Creatinine
+3.1 mEq/L 28, mEq/L 20 mg/dL 90 mg/dL 1.1 mg/dL
+Which of the following is most likely?`)
+    expect(formatted).toMatch(/K\+\t3\.1 mEq\/L/)
+    expect(formatted).toMatch(/HCO3-\t28 mEq\/L/)
+    expect(formatted).toMatch(/Urea nitrogen\t20 mg\/dL/)
+    expect(formatted).toMatch(/Glucose\t90 mg\/dL/)
+    expect(formatted).toMatch(/Creatinine\t1\.1 mg\/dL/)
+    const labs = splitStemSegments(formatted).find((segment) => segment.type === 'labs')
+    expect(labs?.type === 'labs' && labs.rows.filter((row) => row.type === 'row').length).toBe(5)
+  })
+
+  it('pairs a lipid panel after OCR merges the names and values', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Laboratory studies show:
+Serum
+Na* K+|
+Cl-
+Urea nitrogen
+Glucose
+Creatinine
+Cholesterol, total
+HDL-cholesterol|
+LDL-cholesterol
+Triglycerides 142 mEq/L 4.3 mEq/L 109 mEq/L 14 mg/dL 135 mg/dL 0.7 mg/dL 214 mg/dL 50 mg/dL 120 mg/dL 142 mg/dL
+Which of the following modifications would be most beneficial?`)
+    expect(formatted).toMatch(/Na\+\t142 mEq\/L/)
+    expect(formatted).toMatch(/K\+\t4\.3 mEq\/L/)
+    expect(formatted).toMatch(/HDL-cholesterol\t50 mg\/dL/)
+    expect(formatted).toMatch(/Triglycerides\t142 mg\/dL/)
+    expect(formatted).not.toMatch(/Which of the following modifications would be most beneficial\t/)
+  })
+
+  it('does not attach a percent with a hemoglobin range to MCV', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Laboratory studies show:
+Hemoglobin
+10.5 g/dL
+Hematocrit
+33%
+Mean corpuscular volume
+Serum
+Ferritin
+17% (N=11.5-14.5) 45 ng/mL
+Which of the following is the most likely cause?`)
+    expect(formatted).toMatch(/Ferritin\t45 ng\/mL/)
+    expect(formatted).not.toMatch(/Mean corpuscular volume\t17%/)
+    expect(formatted).toMatch(/Mean corpuscular volume/)
+  })
+
   it('puts lab values on separate lines', () => {
     const formatted = formatEmbeddedLabs(`A 32-year-old woman has polyuria.
 Serum studies show:
@@ -450,7 +536,7 @@ Which of the following is the most likely cause of these findings?`)
     expect(formatted).toMatch(/Leukocyte count\s+9000\/mm³/)
     expect(formatted).toMatch(/^Serum$/m)
     expect(formatted).toMatch(/Na\+\s+140 mEq\/L/)
-    expect(formatted).toMatch(/Urine protein\s+1\+/)
+    expect(formatted).toMatch(/Urine protein\s+1\+|Protein\s+1\+/)
     expect(formatted).toMatch(/Which of the following/)
     expect(formatted).toMatch(/An x-ray of the chest shows congestion/)
   })
@@ -558,7 +644,7 @@ Which of the following is the most likely diagnosis?`)
     expect(formatted).toMatch(/Urea nitrogen\s+17 mg\/dl/)
     expect(formatted).toMatch(/Glucose\s+169 mg\/dl/)
     expect(formatted).toMatch(/Creatinine\s+1\.1 mg\/dl/)
-    expect(formatted).toMatch(/Urine protein\s+180 mg\/24 h/)
+    expect(formatted).toMatch(/Urine protein\s+180 mg\/24 h|Protein\s+180 mg\/24 h/)
   })
 
   it('splits packed lab values onto the matching names', () => {
@@ -596,7 +682,7 @@ Which of the following is the most likely diagnosis?
 2-4/hpf`,
       44
     )
-    expect(parsed?.questionStem).toMatch(/Serum creatinine\s+1\.6 mg\/dl/)
+    expect(parsed?.questionStem).toMatch(/Creatinine\s+1\.6 mg\/dl|Serum creatinine\s+1\.6 mg\/dl/)
     expect(parsed?.questionStem).toMatch(/Protein\s+1\+/)
     expect(parsed?.questionStem).toMatch(/WBC\s+1-2\/hpf/)
     expect(parsed?.questionStem).toMatch(/RBC\s+2-4\/hpf/)

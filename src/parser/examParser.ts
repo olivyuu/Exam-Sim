@@ -198,7 +198,8 @@ export function unwrapProse(text: string): string {
       isLabSection(trimmed) ||
       isLabNameLine(trimmed) ||
       /studies show:|urinalysis shows:/i.test(trimmed) ||
-      /\S\s{2,}\S/.test(raw)
+      /\S\s{2,}\S/.test(raw) ||
+      trimmed.includes('\t')
     ) {
       flush()
       out.push(trimmed)

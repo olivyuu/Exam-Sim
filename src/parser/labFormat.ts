@@ -1,10 +1,9 @@
 const LAB_UNITS =
   '(?:mEq\\/L|mg\\/dL|mg\\/dl|g\\/dL|g\\/dl|U\\/L|mm\\s*Hg|mm\\s*\\/\\s*h|mmol\\/L|sec(?:\\s*\\(INR\\s*=\\s*[\\d.\\s]+\\))?|%|\\/mm\\s*3|\\/mm³|\\/hpf|\\/lpf|\\/min|ng\\/mL|ng\\/ml|µg\\/dL|µg\\/dl|μg\\/dL|µU\\/ml|μU\\/ml|pg\\/ml|pmol\\/L|µm³|μm³|µm\\s*3|mg\\/24\\s*h)'
 
-const VALUE_CORE = new RegExp(
-  `^(?:<?[\\d.,]+\\s*${LAB_UNITS}(?:\\s*\\(N\\s*=\\s*[^)]+\\))?(?:\\s+with a normal differential)?|\\d+\\s*-\\s*\\d+\\s*\\/(?:hpf|lpf)|[1-4]\\s*\\+|[5-8](?:\\.\\d{1,3})?|1\\.0\\d{2}|negative|positive|trace|none|nonreactive|reactive|few granular|coarse granular)$`,
-  'i'
-)
+const VALUE_FRAGMENT_SOURCE = `(?:<?[\\d.,]+\\s*${LAB_UNITS}(?:\\s*\\(N\\s*=\\s*[^)]+\\))?(?:\\s+with a normal differential)?|\\d+\\s*-\\s*\\d+\\s*\\/(?:hpf|lpf)|[1-4]\\s*\\+|[5-8]\\.\\d{1,3}|1\\.0\\d{2}|negative|positive|trace|none|nonreactive|reactive|few granular|coarse granular)`
+const VALUE_FRAGMENT = new RegExp(VALUE_FRAGMENT_SOURCE, 'i')
+const VALUE_START = new RegExp(`^(${VALUE_FRAGMENT_SOURCE})`, 'i')
 
 const LAB_SHOW =
   /(?:(?:fasting\s+)?(?:serum|laboratory|blood|urine|plasma|csf)\s+studies\s+show|(?:arterial\s+blood\s+gas[\s\S]{0,90})\s+shows?|urinalysis\s+shows?|hemoglobin electrophoresis\s+shows?)\s*:/i
@@ -28,6 +27,12 @@ const KNOWN_NAMES = [
   'Hemoglobin electrophoresis',
   'Lactate dehydrogenase',
   'Alkaline phosphatase',
+  'Cholesterol, total',
+  'HDL-cholesterol',
+  'LDL-cholesterol',
+  'HDL cholesterol',
+  'LDL cholesterol',
+  'Triglycerides',
   'Total cholesterol',
   'Bilirubin (total)',
   'Bilirubin, total',
@@ -108,10 +113,14 @@ export function normalizeLabToken(line: string): string {
   return line
     .replace(/\u00a0/g, ' ')
     .replace(/\bRSC\b/g, 'RBC')
+    .replace(/\bNa\*/gi, 'Na+')
+    .replace(/\bK[+|•·*]I?\b/g, 'K+')
+    .replace(/\bK•I\b/g, 'K+')
     .replace(/\bcI\s*-/gi, 'Cl-')
     .replace(/\bc\s*1\s*-/gi, 'Cl-')
     .replace(/\bCl\s*[·•]\s*/g, 'Cl-')
     .replace(/\bCl\s+-/g, 'Cl-')
+    .replace(/\bHCO\s*[,\s]*-+(?=\s|$)/gi, 'HCO3-')
     .replace(/\bHCO\s*-?\s*3\s*-?/gi, 'HCO3-')
     .replace(/\bHco\s*-/gi, 'HCO3-')
     .replace(/\bHC0?3-/gi, 'HCO3-')
@@ -123,6 +132,12 @@ export function normalizeLabToken(line: string): string {
     .replace(/\bHemoglobin A\s*2\b/gi, 'Hemoglobin A2')
     .replace(/\bF102\b/gi, 'FiO2')
     .replace(/\bcm\s*Hp\b/gi, 'cm H2O')
+    .replace(/\bmEa\/LI?\b/gi, 'mEq/L')
+    .replace(/(\d),(\s*(?:mEq|mg|g|U|mm|ng|µg|μg))/gi, '$1$2')
+    .replace(/\|/g, ' ')
+    .replace(/\bHDL\s*-?\s*cholesterol\b/gi, 'HDL-cholesterol')
+    .replace(/\bLDL\s*-?\s*cholesterol\b/gi, 'LDL-cholesterol')
+    .replace(/\bCholesterol,\s*total\b/gi, 'Cholesterol, total')
     .replace(/\/mm\s*3\b/gi, '/mm³')
     .replace(/\/mm3\b/gi, '/mm³')
     .replace(/µm\s*3\b/g, 'µm³')
@@ -135,13 +150,9 @@ export function normalizeLabToken(line: string): string {
 export function isLabValueLine(line: string): boolean {
   const t = normalizeLabToken(line)
   if (!t || LAB_STOP_LINE.test(t) || /which of the following/i.test(t)) return false
-  if (VALUE_CORE.test(t) || VALUE_CORE.test(t.replace(/\s+/g, ' '))) return true
-  if (/^<?[\d.,]+\s*(?:mEq\/L|mg\/dL|mg\/dl|g\/dL|U\/L|\/mm³)/i.test(t)) return true
+  if (new RegExp(`^${VALUE_FRAGMENT_SOURCE}$`, 'i').test(t)) return true
   if (/^\d+\s*sec(?:\s*\(INR\s*=\s*[\d.]+\))?$/i.test(t)) return true
-  if (/^[\d.,]+\s*(?:ng|µg|μg|pg|µU|μU|pmol)/i.test(t)) return true
-  if (/^[\d.,]+\s*%\s*\(N\s*=/i.test(t)) return true
   if (/^(?:few|coarse)\s+granular$/i.test(t)) return true
-  if (/^1\.0[0-4]\d$/.test(t)) return true
   return false
 }
 
@@ -157,7 +168,7 @@ export function isLabNameLine(line: string): boolean {
   if (known && known[0].length === t.length) return true
   if (/\b(is|are|of|the|and|with|for|to)\b/i.test(t)) return false
   if (
-    /count|time|rate|saturation|gravity|nitrogen|kinase|phosphatase|bilirubin|cholesterol|globulin|albumin|creatinine|hemoglobin|hematocrit|neutrophils|lymphocytes|platelet|ferritin|amylase|cast|excretion/i.test(
+    /count|time|rate|saturation|gravity|nitrogen|kinase|phosphatase|bilirubin|cholesterol|triglyceride|globulin|albumin|creatinine|hemoglobin|hematocrit|neutrophils|lymphocytes|platelet|ferritin|amylase|cast|excretion/i.test(
       t
     ) &&
     t.split(' ').length <= 6
@@ -176,38 +187,81 @@ function canonicalLabName(token: string): string {
 }
 
 export function explodeLabLine(line: string): string[] {
-  let t = normalizeLabToken(line)
-  if (!t || /^[O0Q]$/i.test(t)) return []
-  t = canonicalLabName(t)
-  t = t.replace(/\s*\((mg\/dl|g\/dl|\/hpf)\s*\)\s*$/i, '')
+  return tokenizeLabStream(line)
+}
 
-  const mashed = t.match(/^(.*[A-Za-z)\]])\s*(\d[\d.,].*)$/)
-  if (mashed && isLabNameLine(mashed[1]) && isLabValueLine(mashed[2])) {
-    return [normalizeLabToken(mashed[1]), normalizeLabToken(mashed[2])]
-  }
+function tokenizeLabStream(text: string): string[] {
+  let rest = normalizeLabToken(text)
+  const cut = rest.search(/which of the following|intravenous infusion of which/i)
+  if (cut >= 0) rest = rest.slice(0, cut).trim()
+  if (!rest || /^[O0Q]$/i.test(rest)) return []
 
-  const parts: string[] = []
-  let rest = t
-  while (rest) {
-    const name = rest.match(NAME_SPLIT)
-    if (name && name[0].length < rest.length && isLabNameLine(name[0])) {
-      const after = rest.slice(name[0].length).trim()
-      if (!after || isLabValueLine(after) || NAME_SPLIT.test(after) || isLabSection(after)) {
-        parts.push(normalizeLabToken(name[0]))
+  const out: string[] = []
+  let guard = 0
+  while (rest && guard++ < 80) {
+    rest = rest.replace(/^[,;:/]+/, '').replace(/\s*\((?:mg\/dl|g\/dl|\/hpf)\s*\)\s*/gi, ' ').trim()
+    if (!rest) break
+    if (LAB_STOP_LINE.test(rest)) break
+    if (isLabSection(rest)) {
+      out.push(rest.replace(/:$/, ''))
+      break
+    }
+
+    const known = rest.match(NAME_SPLIT)
+    if (known) {
+      const after = rest.slice(known[0].length).trim()
+      if (
+        !after ||
+        NAME_SPLIT.test(after) ||
+        VALUE_START.test(after) ||
+        isLabSection(after) ||
+        /^\d/.test(after) ||
+        isLabNameLine(after.split(/\s+/).slice(0, 4).join(' '))
+      ) {
+        out.push(canonicalLabName(normalizeLabToken(known[0])))
         rest = after
         continue
       }
     }
-    parts.push(rest)
-    break
-  }
-  return parts.flatMap((part) => {
-    const valueSplit = part.match(/^(.*[A-Za-z)\]])\s+(\d[\d.,].*)$/)
-    if (valueSplit && isLabNameLine(valueSplit[1]) && isLabValueLine(valueSplit[2])) {
-      return [normalizeLabToken(valueSplit[1]), normalizeLabToken(valueSplit[2])]
+
+    const header = rest.match(/^(serum|urine|plasma|csf|complete blood count)\b/i)
+    if (header) {
+      const after = rest.slice(header[0].length).trim()
+      if (!after || isLabSection(after) || VALUE_START.test(after)) {
+        out.push(normalizeLabToken(header[0]))
+        rest = after
+        continue
+      }
     }
-    return [normalizeLabToken(part)]
-  }).filter(Boolean)
+
+    const value = rest.match(VALUE_START)
+    if (value && isLabValueLine(value[1] ?? value[0])) {
+      out.push(normalizeLabToken(value[1] ?? value[0]))
+      rest = rest.slice((value[1] ?? value[0]).length).trim()
+      continue
+    }
+
+    const bareNumber = rest.match(/^\d+(?:\.\d+)?(?=\s|$)/)
+    if (bareNumber) {
+      out.push(bareNumber[0])
+      rest = rest.slice(bareNumber[0].length).trim()
+      continue
+    }
+
+    const words = rest.split(/\s+/)
+    let took = false
+    for (let count = Math.min(4, words.length); count >= 1; count--) {
+      const phrase = words.slice(0, count).join(' ').replace(/\s*\((?:mg\/dl|g\/dl|\/hpf)\s*\)\s*$/i, '')
+      if (!isLabNameLine(phrase)) continue
+      out.push(canonicalLabName(normalizeLabToken(phrase)))
+      rest = words.slice(count).join(' ')
+      took = true
+      break
+    }
+    if (took) continue
+    rest = words.slice(1).join(' ')
+  }
+  return out.filter(Boolean)
 }
 
 function findLabBlockStart(text: string): number {
@@ -293,7 +347,7 @@ function valueUnitFamily(value: string): string | null {
   if (/mm\s*\/\s*h/i.test(value)) return 'esr'
   if (/mm Hg/i.test(value)) return 'gas'
   if (/^1\.\d{3}/.test(value)) return 'sg'
-  if (/^(?:positive|negative|nonreactive|reactive)$/i.test(value)) return 'sero'
+  if (/^(?:positive|negative|nonreactive|reactive|trace|none)$/i.test(value)) return null
   return null
 }
 
@@ -308,7 +362,9 @@ function nameUnitFamily(name: string): string | null {
   if (/sedimentation/i.test(name)) return 'esr'
   if (/residual volume/i.test(name)) return 'volume'
   if (/leukocyte count|platelet count/i.test(name)) return 'count'
-  if (/urea nitrogen|creatinine|bilirubin|cholesterol|calcium|urine protein/i.test(name)) return 'chem'
+  if (/urea nitrogen|creatinine|bilirubin|cholesterol|triglyceride|hdl-cholesterol|ldl-cholesterol|calcium|urine protein|^(?:serum )?glucose$/i.test(name)) {
+    return 'chem'
+  }
   if (/^(?:na\+|k\+|cl-|hco3-|bicarbonate)$/i.test(name)) return 'electrolyte'
   if (/specific gravity/i.test(name)) return 'sg'
   if (/albumin|total protein/i.test(name)) return 'protein'
@@ -345,7 +401,7 @@ function pairLabTokens(tokens: string[]): string[] {
       }
       const match = values.findIndex((value, valueIndex) => valueIndex >= index && compatibleLabPair(item.text, value))
       if (match >= 0) {
-        values.slice(index, match).forEach((value) => out.push(value))
+        values.slice(index, match).forEach(() => undefined)
         out.push(pair(item.text, values[match]))
         index = match + 1
       } else {
@@ -353,7 +409,6 @@ function pairLabTokens(tokens: string[]): string[] {
       }
     }
     pending.length = 0
-    values.slice(index).forEach((value) => out.push(value))
   }
 
   for (let i = 0; i < tokens.length; i++) {
@@ -391,25 +446,26 @@ function pairLabTokens(tokens: string[]): string[] {
 }
 
 function expandPackedLabValues(token: string): string[] {
-  if (!token || isLabValueLine(token) || isLabNameLine(token) || isLabSection(token)) return [token]
-  const pieces = token
-    .split(new RegExp(`(?<=${LAB_UNITS})\\s+`, 'i'))
-    .map(normalizeLabToken)
-    .filter(Boolean)
-  if (pieces.length > 1 && pieces.every((piece) => isLabValueLine(piece))) return pieces
-  return [token]
+  if (!token) return []
+  if (isLabSection(token)) return [token]
+  const parts = tokenizeLabStream(token)
+  return parts.length > 0 ? parts : [token]
 }
 
 function collectLabTokens(text: string): string[] {
   const tokens: string[] = []
   for (const line of text.split('\n')) {
-    for (const token of explodeLabLine(line)) {
-      if (!token) continue
-      if (LAB_STOP_LINE.test(token) || /which of the following|intravenous infusion of/i.test(token) || token.length > 90) {
-        return tokens
-      }
-      tokens.push(...expandPackedLabValues(token))
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (/which of the following|intravenous infusion of which/i.test(trimmed)) {
+      const before = trimmed.split(/which of the following|intravenous infusion of which/i)[0]
+      if (before.trim()) tokens.push(...tokenizeLabStream(before))
+      return tokens
     }
+    if (LAB_STOP_LINE.test(normalizeLabToken(trimmed)) && !isLabValueLine(trimmed) && !isLabNameLine(trimmed)) {
+      return tokens
+    }
+    tokens.push(...tokenizeLabStream(trimmed))
   }
   return tokens
 }
