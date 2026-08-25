@@ -494,6 +494,70 @@ Which of the following is the most likely cause?`)
     expect(formatted).toMatch(/Mean corpuscular volume/)
   })
 
+  it('formats a packed urinalysis into two columns including nitrites', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Urinalysis shows:
+Specific gravity 1.025 Blood 2+ Protein trace RBC 0/hpf WBC 0/hpf Nitrites negative
+Which of the following is the most likely diagnosis?`)
+    expect(formatted).toMatch(/Specific gravity\t1\.025/)
+    expect(formatted).toMatch(/Blood\t2\+/)
+    expect(formatted).toMatch(/Nitrites\tnegative/)
+    expect(formatted).toMatch(/RBC\t0\/hpf/)
+  })
+
+  it('formats cerebrospinal fluid analysis as a two-column table', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Cerebrospinal fluid analysis shows:
+Opening pressure 340 mm HP
+Glucose 28 mg/dL
+Total protein 154 mg/dL
+Leukocyte count 8648/mm3
+Erythrocyte count 95/mm3
+Which of the following is the most likely diagnosis?`)
+    expect(formatted).toMatch(/Opening pressure\t340 mm H2O/)
+    expect(formatted).toMatch(/Glucose\t28 mg\/dL/)
+    expect(formatted).toMatch(/Leukocyte count\t8648\/mm³/)
+  })
+
+  it('formats hemoglobin electrophoresis percentages with reference ranges', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Hemoglobin electrophoresis shows:
+Hemoglobin A 42% (N=95%-98%)
+Hemoglobin A2 3% (N=2%-3%)
+Hemoglobin F 2% (N=0.8%-2%)
+Hemoglobin S 53% (N=0%)
+Which of the following is the most likely diagnosis?`)
+    expect(formatted).toMatch(/Hemoglobin A\t42% \(N=95%-98%\)/)
+    expect(formatted).toMatch(/Hemoglobin S\t53% \(N=0%\)/)
+  })
+
+  it('formats results-of-studies panels and packed synovial fluid rows', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Results of laboratory studies:
+Na+ 139 mEq/L
+K+ 4.1 mEq/L
+Synovial fluid analysis shows:
+Leukocyte count 45000/mm3
+Glucose 40 mg/dL
+Which of the following is the most likely diagnosis?`)
+    expect(formatted).toMatch(/Na\+\t139 mEq\/L/)
+    expect(formatted).toMatch(/Leukocyte count\t45000\/mm³/)
+    expect(formatted).toMatch(/Glucose\t40 mg\/dL/)
+  })
+
+  it('formats a time-series blood-pressure table into rows and columns', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Number of Months Ago 24 21 15 12 8 6 4 2 Blood Pressure (mm Hg) 130/80 140/70 130/80 160/90 170/96 180/110 180/100
+Serum studies show:
+K+
+3.1 mEq/L
+Which of the following is the most likely cause?`)
+    expect(formatted).toMatch(/Number of Months Ago\t24\t21\t15/)
+    expect(formatted).toMatch(/Blood Pressure \(mm Hg\)\t130\/80\t140\/70/)
+    const tables = splitStemSegments(formatted).filter((segment) => segment.type === 'labs')
+    expect(tables.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('puts lab values on separate lines', () => {
     const formatted = formatEmbeddedLabs(`A 32-year-old woman has polyuria.
 Serum studies show:

@@ -1,18 +1,18 @@
 const LAB_UNITS =
-  '(?:mEq\\/L|mg\\/dL|mg\\/dl|g\\/dL|g\\/dl|U\\/L|mm\\s*Hg|mm\\s*\\/\\s*h|mmol\\/L|sec(?:\\s*\\(INR\\s*=\\s*[\\d.\\s]+\\))?|%|\\/mm\\s*3|\\/mm³|\\/hpf|\\/lpf|\\/min|ng\\/mL|ng\\/ml|µg\\/dL|µg\\/dl|μg\\/dL|µU\\/ml|μU\\/ml|pg\\/ml|pmol\\/L|µm³|μm³|µm\\s*3|mg\\/24\\s*h)'
+  '(?:mEq\\/L|mg\\/dL|mg\\/dl|g\\/dL|g\\/dl|U\\/L|mm\\s*Hg|mm\\s*(?:H2O|H20|Hp|HP)|mm\\s*\\/\\s*h|mmol\\/L|sec(?:\\s*\\(INR\\s*=\\s*[\\d.\\s]+\\))?|%|\\/mm\\s*3|\\/mm³|\\/hpf|\\/lpf|\\/min|ng\\/mL|ng\\/ml|µg\\/dL|µg\\/dl|μg\\/dL|µU\\/ml|μU\\/ml|pg\\/ml|pmol\\/L|µm³|μm³|µm\\s*3|mg\\/24\\s*h)'
 
-const VALUE_FRAGMENT_SOURCE = `(?:<?[\\d.,]+\\s*${LAB_UNITS}(?:\\s*\\(N\\s*=\\s*[^)]+\\))?(?:\\s+with a normal differential)?|\\d+\\s*-\\s*\\d+\\s*\\/(?:hpf|lpf)|[1-4]\\s*\\+|[5-8]\\.\\d{1,3}|1\\.0\\d{2}|negative|positive|trace|none|nonreactive|reactive|few granular|coarse granular)`
+const VALUE_FRAGMENT_SOURCE = `(?:<?[\\d.,]+\\s*${LAB_UNITS}(?:\\s*\\(N\\s*=\\s*[^)]+\\))?(?:\\s+with a normal differential)?|\\d+\\s*-\\s*\\d+\\s*\\/(?:hpf|lpf)|\\d+\\s*\\/(?:hpf|lpf)|[1-4]\\s*\\+|wbc\\s*[1-4]\\s*\\+|[5-8]\\.\\d{1,3}|1\\.0\\d{2}|negative|positive|trace|none|nonreactive|reactive|few granular|coarse granular)`
 const VALUE_FRAGMENT = new RegExp(VALUE_FRAGMENT_SOURCE, 'i')
 const VALUE_START = new RegExp(`^(${VALUE_FRAGMENT_SOURCE})`, 'i')
 
 const LAB_SHOW =
-  /(?:(?:fasting\s+)?(?:serum|laboratory|blood|urine|plasma|csf)\s+studies\s+show|(?:arterial\s+blood\s+gas[\s\S]{0,90})\s+shows?|urinalysis\s+shows?|hemoglobin electrophoresis\s+shows?)\s*:/i
+  /(?:(?:fasting\s+)?(?:serum|laboratory|blood|urine|plasma|csf)\s+studies\s+show|(?:results of\s+(?:serum|laboratory|blood)\s+studies(?:\s+show)?|laboratory findings(?:\s+show)?)|(?:arterial\s+blood\s+gas[\s\S]{0,90})\s+shows?|urinalysis\s+shows?|hemoglobin electrophoresis\s+shows?|(?:cerebrospinal fluid|csf|synovial fluid|pleural fluid|peritoneal fluid)(?:\s+analysis)?\s+shows?)\s*:/i
 
 const LAB_HEADER_LINE =
-  /^(serum|urine|plasma|csf|complete blood count|pleural fluid|synovial fluid|peritoneal fluid|urinalysis|arterial blood gas analysis(?: on room air)?(?: shows?:?)?|hemoglobin electrophoresis(?: shows?:?)?|on admission|now)$/i
+  /^(serum|urine|plasma|csf|cerebrospinal fluid|complete blood count|pleural fluid|synovial fluid|peritoneal fluid|urinalysis|arterial blood gas analysis(?: on room air)?(?: shows?:?)?|hemoglobin electrophoresis(?: shows?:?)?|on admission|now)$/i
 
 export const LAB_STOP_LINE =
-  /^(which of the following|intravenous (?:infusion|administration)|an x-ray|a ct|an ecg|echocardiography|ultrasonography|venous duplex|microscopic examination|abdominal ultrasonography|examination shows|the remainder|the patient asks|supplementation with|blood cultures|a gram stain|0\s*[A-JQ]\)|[A-J]\))/i
+  /^(which of the following|intravenous (?:infusion|administration)|an x-ray|a ct|an ecg|echocardiography|ultrasonography|venous duplex|microscopic examination|abdominal ultrasonography|examination shows|the remainder|the patient asks|supplementation with|blood cultures|a gram stain of|0\s*[A-JQ]\)|[A-J]\))/i
 
 const KNOWN_NAMES = [
   'Fractional excretion of Na+',
@@ -52,10 +52,18 @@ const KNOWN_NAMES = [
   'Urine protein',
   'Urine pH',
   'O2 saturation',
+  'Opening pressure',
+  'Erythrocyte count',
   'Hemoglobin A1c',
   'Hemoglobin A2',
   'Hemoglobin F',
+  'Hemoglobin S',
+  'Hemoglobin C',
   'Hemoglobin A',
+  'Gram stain',
+  'Organisms',
+  'Nitrites',
+  'Nitrite',
   'Glucose, fasting',
   'Total protein',
   'Uric acid',
@@ -132,6 +140,8 @@ export function normalizeLabToken(line: string): string {
     .replace(/\bHemoglobin A\s*2\b/gi, 'Hemoglobin A2')
     .replace(/\bF102\b/gi, 'FiO2')
     .replace(/\bcm\s*Hp\b/gi, 'cm H2O')
+    .replace(/\bmm\s*H[pP]\b/g, 'mm H2O')
+    .replace(/\bmm\s*H20\b/g, 'mm H2O')
     .replace(/\bmEa\/LI?\b/gi, 'mEq/L')
     .replace(/(\d),(\s*(?:mEq|mg|g|U|mm|ng|µg|μg))/gi, '$1$2')
     .replace(/\|/g, ' ')
@@ -152,7 +162,9 @@ export function isLabValueLine(line: string): boolean {
   if (!t || LAB_STOP_LINE.test(t) || /which of the following/i.test(t)) return false
   if (new RegExp(`^${VALUE_FRAGMENT_SOURCE}$`, 'i').test(t)) return true
   if (/^\d+\s*sec(?:\s*\(INR\s*=\s*[\d.]+\))?$/i.test(t)) return true
+  if (/^\d+\/(?:hpf|lpf)$/i.test(t)) return true
   if (/^(?:few|coarse)\s+granular$/i.test(t)) return true
+  if (/^340 mm H2O$|^[\d.,]+\s*mm H2O$/i.test(t)) return true
   return false
 }
 
@@ -168,7 +180,7 @@ export function isLabNameLine(line: string): boolean {
   if (known && known[0].length === t.length) return true
   if (/\b(is|are|of|the|and|with|for|to)\b/i.test(t)) return false
   if (
-    /count|time|rate|saturation|gravity|nitrogen|kinase|phosphatase|bilirubin|cholesterol|triglyceride|globulin|albumin|creatinine|hemoglobin|hematocrit|neutrophils|lymphocytes|platelet|ferritin|amylase|cast|excretion/i.test(
+    /count|time|rate|saturation|gravity|nitrogen|kinase|phosphatase|bilirubin|cholesterol|triglyceride|globulin|albumin|creatinine|hemoglobin|hematocrit|neutrophils|lymphocytes|platelet|ferritin|amylase|cast|excretion|nitrite|opening pressure|erythrocyte/i.test(
       t
     ) &&
     t.split(' ').length <= 6
@@ -344,7 +356,7 @@ function valueUnitFamily(value: string): string | null {
   if (/g\/d[lL]/i.test(value)) return 'protein'
   if (/U\/L/i.test(value)) return 'enzyme'
   if (/\/mm³|\/mm3/i.test(value)) return 'count'
-  if (/mm\s*\/\s*h/i.test(value)) return 'esr'
+  if (/mm\s*H2O|cm\s*H2O/i.test(value)) return 'pressure'
   if (/mm Hg/i.test(value)) return 'gas'
   if (/^1\.\d{3}/.test(value)) return 'sg'
   if (/^(?:positive|negative|nonreactive|reactive|trace|none)$/i.test(value)) return null
@@ -353,7 +365,11 @@ function valueUnitFamily(value: string): string | null {
 
 function nameUnitFamily(name: string): string | null {
   if (/mean corpuscular volume|^mcv$/i.test(name)) return 'volume'
-  if (/hematocrit|hemoglobin\s*a1c|hba1c|hemoglobin\s*a2|hemoglobin\s*f|^hemoglobin a$|reticulocyte|transferrin saturation|fractional excretion/i.test(name)) {
+  if (
+    /hematocrit|hemoglobin\s*a1c|hba1c|hemoglobin\s*a2|hemoglobin\s*[afsc]|reticulocyte|transferrin saturation|fractional excretion/i.test(
+      name
+    )
+  ) {
     return 'percent'
   }
   if (/hemoglobin(?! electrophoresis)/i.test(name)) return 'protein'
@@ -361,7 +377,8 @@ function nameUnitFamily(name: string): string | null {
   if (/iron-binding|^tibc$|^(?:serum )?iron$/i.test(name)) return 'iron'
   if (/sedimentation/i.test(name)) return 'esr'
   if (/residual volume/i.test(name)) return 'volume'
-  if (/leukocyte count|platelet count/i.test(name)) return 'count'
+  if (/opening pressure/i.test(name)) return 'pressure'
+  if (/leukocyte count|erythrocyte count|platelet count/i.test(name)) return 'count'
   if (/urea nitrogen|creatinine|bilirubin|cholesterol|triglyceride|hdl-cholesterol|ldl-cholesterol|calcium|urine protein|^(?:serum )?glucose$/i.test(name)) {
     return 'chem'
   }
@@ -540,13 +557,108 @@ export function peelLabTail(text: string): { text: string; tokens: string[] } {
   return { text: head, tokens: all }
 }
 
+function isSeriesValue(token: string): boolean {
+  const t = token.trim().replace(/[()]/g, '')
+  if (!t) return false
+  if (isLabValueLine(t)) return true
+  if (/^\d+(?:\.\d+)?$/.test(t)) return true
+  if (/^\d{2,3}\/\d{2,3}$/.test(t)) return true
+  return false
+}
+
+function looksLikeSeriesName(name: string): boolean {
+  return /months ago|weeks ago|days ago|hours ago|blood pressure|temperature|time\s*\(/i.test(name)
+}
+
+function peelSeriesFromLine(line: string): string[] {
+  if (line.includes('\t')) return []
+  const tokens = line.trim().split(/\s+/).filter(Boolean)
+  const rows: { name: string; values: string[] }[] = []
+  let offset = 0
+  while (offset < tokens.length) {
+    let firstValue = -1
+    for (let index = offset; index < tokens.length; index++) {
+      if (isSeriesValue(tokens[index])) {
+        firstValue = index
+        break
+      }
+    }
+    if (firstValue < offset + 1) break
+    let end = firstValue
+    while (end < tokens.length && isSeriesValue(tokens[end])) end += 1
+    if (end - firstValue < 3) break
+    const name = tokens.slice(offset, firstValue).join(' ')
+    rows.push({ name, values: tokens.slice(firstValue, end) })
+    offset = end
+  }
+  if (rows.length < 2) return []
+  if (!rows.some((row) => looksLikeSeriesName(row.name))) return []
+  return rows.map((row) => [row.name, ...row.values].join('\t'))
+}
+
+function splitSeriesRow(line: string): { name: string; values: string[] } | null {
+  if (line.includes('\t')) return null
+  const tokens = line.trim().split(/\s+/).filter(Boolean)
+  if (tokens.length < 4) return null
+  let firstValue = -1
+  for (let index = 0; index < tokens.length; index++) {
+    if (isSeriesValue(tokens[index])) {
+      firstValue = index
+      break
+    }
+  }
+  if (firstValue < 1 || tokens.length - firstValue < 3) return null
+  const name = tokens.slice(0, firstValue).join(' ')
+  const values = tokens.slice(firstValue)
+  if (!values.every(isSeriesValue)) return null
+  if (/which of the following|^[A-P][).]/i.test(name)) return null
+  if (!looksLikeSeriesName(name) && name.split(' ').length < 2) return null
+  return { name, values }
+}
+
+function formatDataTables(text: string): string {
+  const lines = text.split('\n')
+  const out: string[] = []
+  for (let index = 0; index < lines.length; index++) {
+    const peeled = peelSeriesFromLine(lines[index])
+    if (peeled.length >= 2) {
+      out.push(...peeled)
+      continue
+    }
+    const current = splitSeriesRow(lines[index])
+    const next = splitSeriesRow(lines[index + 1] ?? '')
+    if (
+      current &&
+      next &&
+      Math.abs(current.values.length - next.values.length) <= 1 &&
+      (looksLikeSeriesName(current.name) || looksLikeSeriesName(next.name))
+    ) {
+      const rows = [current]
+      let cursor = index + 1
+      while (cursor < lines.length) {
+        const row = splitSeriesRow(lines[cursor])
+        if (!row || Math.abs(row.values.length - current.values.length) > 1) break
+        rows.push(row)
+        cursor += 1
+      }
+      if (rows.length >= 2) {
+        for (const row of rows) out.push([row.name, ...row.values].join('\t'))
+        index = cursor - 1
+        continue
+      }
+    }
+    out.push(lines[index])
+  }
+  return out.join('\n')
+}
+
 export function formatEmbeddedLabs(text: string, extraTokens: string[] = []): string {
   const marker = findLabBlockStart(text)
-  if (marker < 0) return text
+  if (marker < 0) return formatDataTables(text)
 
   const prefix = text.slice(0, marker).trimEnd()
   const rest = text.slice(marker)
-  const headerMatch = rest.match(/^[\s\S]*?shows?:\s*/i)
+  const headerMatch = rest.match(LAB_SHOW) ?? rest.match(/^[\s\S]*?shows?:\s*/i)
   const header = (headerMatch ? headerMatch[0] : rest).replace(/\s+/g, ' ').trim()
   let body = headerMatch ? rest.slice(headerMatch[0].length) : ''
 
@@ -595,7 +707,7 @@ export function formatEmbeddedLabs(text: string, extraTokens: string[] = []): st
   const labeled = labelBareAbg(tokens)
   const paired = pairLabTokens(labeled)
   const leftover = tidyLeftover(leftoverProse(body))
-  return [prefix, header, ...paired, leftover, whichLine ? `\n${whichLine}` : ''].filter(Boolean).join('\n')
+  return formatDataTables([prefix, header, ...paired, leftover, whichLine ? `\n${whichLine}` : ''].filter(Boolean).join('\n'))
 }
 
 export type LabTableRow =

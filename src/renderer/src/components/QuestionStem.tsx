@@ -16,41 +16,43 @@ function columnCount(rows: LabTableRow[]): number {
 function LabTable({ rows }: { rows: LabTableRow[] }) {
   const cols = columnCount(rows)
   return (
-    <table className="lab-table">
-      <tbody>
-        {rows.map((row, index) => {
-          if (row.type === 'section') {
+    <div className="lab-table-wrap">
+      <table className="lab-table">
+        <tbody>
+          {rows.map((row, index) => {
+            if (row.type === 'section') {
+              return (
+                <tr key={index} className="lab-section">
+                  <td colSpan={cols}>{row.label}</td>
+                </tr>
+              )
+            }
+            if (row.type === 'header') {
+              const heads = row.values.length + 1 === cols ? ['', ...row.values] : row.values
+              return (
+                <tr key={index} className="lab-head">
+                  {heads.map((head, headIndex) => (
+                    <th key={headIndex}>{head}</th>
+                  ))}
+                </tr>
+              )
+            }
+            const values = [...row.values]
+            while (1 + values.length < cols) values.push('')
             return (
-              <tr key={index} className="lab-section">
-                <td colSpan={cols}>{row.label}</td>
-              </tr>
-            )
-          }
-          if (row.type === 'header') {
-            const heads = row.values.length + 1 === cols ? ['', ...row.values] : row.values
-            return (
-              <tr key={index} className="lab-head">
-                {heads.map((head, headIndex) => (
-                  <th key={headIndex}>{head}</th>
+              <tr key={index}>
+                <td className="lab-name">{row.name}</td>
+                {values.map((value, valueIndex) => (
+                  <td key={valueIndex} className="lab-val">
+                    {value}
+                  </td>
                 ))}
               </tr>
             )
-          }
-          const values = [...row.values]
-          while (1 + values.length < cols) values.push('')
-          return (
-            <tr key={index}>
-              <td className="lab-name">{row.name}</td>
-              {values.map((value, valueIndex) => (
-                <td key={valueIndex} className="lab-val">
-                  {value}
-                </td>
-              ))}
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
