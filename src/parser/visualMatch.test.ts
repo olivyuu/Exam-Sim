@@ -68,7 +68,12 @@ describe('visualMatch', () => {
     expect(refined.questionStem).toBe(good!.questionStem)
     expect(refined.parseWarnings).toEqual(good!.parseWarnings)
     expect(shouldCheckVisual(good!)).toBe(false)
-    expect(shouldCheckVisual({ ...good!, usedOriginalImage: true })).toBe(true)
+    expect(
+      shouldCheckVisual({
+        ...good!,
+        parseWarnings: ['Formatted text may not match the original PDF closely.']
+      })
+    ).toBe(true)
     expect(
       shouldCheckVisual({
         ...good!,

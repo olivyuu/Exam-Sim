@@ -1,5 +1,6 @@
 import { useExamStore } from '../store'
-import { stripExplanationFromStem, ORIGINAL_PDF_FALLBACK_MESSAGE } from '../../../parser/examParser'
+import { stripExplanationFromStem } from '../../../parser/examParser'
+import { QuestionStem } from '../components/QuestionStem'
 import { formatClock, totalTestSeconds } from '../../../shared/types'
 
 export function ImportReviewScreen() {
@@ -13,7 +14,6 @@ export function ImportReviewScreen() {
   const total = questions.length
   const mismatch = sets.some((s) => s.status === 'mismatch' || s.status === 'error')
   const missingAnswers = questions.filter((q) => !q.correctAnswer).length
-  const originalFallbacks = questions.filter((q) => q.usedOriginalImage).length
 
   return (
     <div className="setup">
@@ -55,12 +55,6 @@ export function ImportReviewScreen() {
           {missingAnswers} item(s) could not be fully keyed from the explanation PDF. You can still take the test.
         </div>
       ) : null}
-      {originalFallbacks > 0 ? (
-        <div className="error-banner">
-          {originalFallbacks} item(s) will show the original PDF page because formatted text could not be generated
-          reliably.
-        </div>
-      ) : null}
       {mismatch ? (
         <div className="error-banner">
           One or more sets have mismatched question/answer counts. The pairing was not assumed to be correct.
@@ -72,21 +66,7 @@ export function ImportReviewScreen() {
           <h3 style={{ marginTop: 0 }}>
             Preview item {question.questionNumber} of {total}
           </h3>
-          {question.usedOriginalImage && question.pageImageDataUrl ? (
-            <>
-              <p className="original-fallback-note">{ORIGINAL_PDF_FALLBACK_MESSAGE}</p>
-              <img
-                className="question-original"
-                src={question.pageImageDataUrl}
-                alt="Original question from the uploaded PDF"
-              />
-            </>
-          ) : (
-            <p>
-              {stripExplanationFromStem(question.questionStem).slice(0, 500)}
-              {question.questionStem.length > 500 ? '…' : ''}
-            </p>
-          )}
+          <QuestionStem stem={stripExplanationFromStem(question.questionStem)} />
           <ol type="A">
             {question.answerChoices.map((choice) => (
               <li key={choice.label}>{choice.text}</li>

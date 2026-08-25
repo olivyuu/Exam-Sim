@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { Question } from '../../../shared/types'
-import { HighlightableText } from './HighlightableText'
+import { stripExplanationFromStem } from '../../../parser/examParser'
+import { QuestionStem } from './QuestionStem'
 import { AnswerChoices } from './AnswerChoices'
 import { useExamStore } from '../store'
-import { stripExplanationFromStem, ORIGINAL_PDF_FALLBACK_MESSAGE } from '../../../parser/examParser'
 
 export function QuestionBody({
   question,
@@ -17,14 +17,12 @@ export function QuestionBody({
   const setHighlights = useExamStore((s) => s.setHighlights)
   const [showOriginal, setShowOriginal] = useState(false)
   const figures = question.questionImages.filter((img) => img.kind === 'figure')
-  const tables = question.questionImages.filter((img) => img.kind === 'table')
   const originalSrc = question.pageImageDataUrl
   const canShowOriginal = Boolean(originalSrc)
-  const preferOriginal = Boolean(question.usedOriginalImage && originalSrc)
 
   useEffect(() => {
-    setShowOriginal(preferOriginal)
-  }, [question.id, preferOriginal])
+    setShowOriginal(false)
+  }, [question.id])
 
   return (
     <>
@@ -37,16 +35,13 @@ export function QuestionBody({
           {showOriginal ? 'Show formatted text' : 'Show image of original question'}
         </button>
       ) : null}
-      {showOriginal && question.usedOriginalImage ? (
-        <p className="original-fallback-note">{ORIGINAL_PDF_FALLBACK_MESSAGE}</p>
-      ) : null}
       {showOriginal && originalSrc ? (
         <img className="question-original" src={originalSrc} alt="Original question from the uploaded PDF" />
       ) : (
         <div className="question-layout">
           <div className="question-copy">
-            <HighlightableText
-              text={stripExplanationFromStem(question.questionStem)}
+            <QuestionStem
+              stem={stripExplanationFromStem(question.questionStem)}
               highlights={question.highlights}
               enabled={mode !== 'preview'}
               onChange={setHighlights}
@@ -67,11 +62,6 @@ export function QuestionBody({
           ))}
         </div>
       )}
-      {!showOriginal
-        ? tables.map((img, index) => (
-            <img key={`tbl-${index}`} className="question-table-image" src={img.dataUrl} alt="Tabular answer choices" />
-          ))
-        : null}
       <AnswerChoices
         question={question}
         mode={mode === 'preview' ? 'exam' : mode}

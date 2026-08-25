@@ -13,7 +13,7 @@ export function buildExcelRows(questions: ExcelSource[]): Array<[number, string,
     .map((question) => [
       question.questionNumber,
       question.notes.trim(),
-      question.questionStem.trim(),
+      question.questionStem.trim().replace(/\t+/g, '  '),
       question.answerChoices.map((choice) => `${choice.label}. ${choice.text}`).join('\n')
     ])
 }

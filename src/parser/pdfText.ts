@@ -13,7 +13,7 @@ const KEEP_WORDS = new Set(
     a an and are as at be but by can did do does for from had has have he her hers him his
     how if in into is it its may me my no nor not of on or our out per she so than that
     the their them then there these they this those to too up us was we were what when
-    where which who will with would you your
+    where which who will with would you your here
     also both each more most only over some such than then very
     after before during since until while about against between without within
     left right upper lower acute chronic mild severe high low more less
@@ -114,7 +114,7 @@ export function joinPdfTextItems(items: PdfTextItem[]): string {
       const needsSpace =
         !line.endsWith(' ') &&
         !item.str.startsWith(' ') &&
-        gap > Math.max(em * 0.12, charW * 0.28, 2.2)
+        gap > Math.max(em * 0.08, charW * 0.2, 0.9)
       line += (needsSpace ? ' ' : '') + item.str
     } else {
       line = item.str
@@ -145,26 +145,47 @@ export function looksLikeSpacedGlyphText(text: string): boolean {
   return odd / tokens.length >= 0.12
 }
 
+function hasVowel(word: string): boolean {
+  return /[aeiouy]/i.test(word)
+}
+
+function looksLikeCompleteWord(word: string): boolean {
+  const lower = word.toLowerCase()
+  if (KEEP_WORDS.has(lower)) return true
+  const vowels = (word.match(/[aeiouy]/gi) ?? []).length
+  if (word.length < 4 || vowels < 2) return false
+  if (/^[^aeiouy]{2}/i.test(word)) return false
+  return true
+}
+
 function isGlyphFragment(word: string): boolean {
   const lower = word.toLowerCase()
-  if (KEEP_WORDS.has(lower)) return false
-  if (word.length <= 3) return true
-  if (word.length <= 6 && /^[^aeiou]{2}/i.test(word)) return true
-  if (word.length === 4 && !KEEP_WORDS.has(lower)) return true
+  if (KEEP_WORDS.has(lower) && lower !== 'me') return false
+  if (word.length <= 2) return true
+  if (word.length === 3 && !hasVowel(word.replace(/y/gi, ''))) return true
+  if (word.length <= 7 && /^[^aeiouy]{2}/i.test(word)) return true
   return false
 }
 
 function shouldJoinGlyphs(left: string, right: string): boolean {
   const a = left.toLowerCase()
   const b = right.toLowerCase()
+  if (looksLikeCompleteWord(left) && looksLikeCompleteWord(right)) return false
+  if (KEEP_WORDS.has(a) && a !== 'me') return false
+  if (KEEP_WORDS.has(b)) return false
   if (isGlyphFragment(left) && isGlyphFragment(right)) return true
   if (a === 'me' && isGlyphFragment(right) && /^[^aeiou]{2}/i.test(right)) return true
-  if (left.length === 1 && isGlyphFragment(right) && !KEEP_WORDS.has(b)) return true
-  if (left.length === 1 && /^[aeiou]/i.test(right) && right.length >= 4 && !KEEP_WORDS.has(b)) return true
-  if (isGlyphFragment(left) && !KEEP_WORDS.has(b) && right.length >= 3 && left.length <= 4) return true
-  if (!KEEP_WORDS.has(a) && isGlyphFragment(right) && right.length <= 3 && left.length >= 4) return true
-  if (left.length >= 4 && /^(pathy|plasia|penia|itis|emia|osis|oma)$/i.test(right)) return true
-  if (left.length >= 3 && /^(ly|ing|ness|tion|sion|ety|iety|ous|able|ment|ities|alities)$/i.test(right)) {
+  if (left.length === 1 && isGlyphFragment(right)) return true
+  if (left.length === 1 && /^[aeiou]/i.test(right) && right.length >= 4) return true
+  if (right.length === 1 && /^[a-z]$/.test(right) && left.length >= 4) return true
+  if (left.length <= 2 && !KEEP_WORDS.has(a)) return true
+  if (left.length >= 5 && right.length <= 2 && !looksLikeCompleteWord(right)) return true
+  if (left.length <= 5 && /^[^aeiouy]{2}/i.test(right) && right.length >= 5) return true
+  if (!looksLikeCompleteWord(left) && (right.length <= 2 || /^(pathy|plasia|penia|itis|emia|osis|oma|ly|ing|ness|tion|sion|ety|iety|ous|able|ment|ities|alities|ial|pat|hy)$/i.test(right))) {
+    return true
+  }
+  if (left.length >= 4 && /^(pathy|plasia|penia|itis|emia|osis|oma|pat|hy|der)$/i.test(right)) return true
+  if (left.length >= 3 && /^(ly|ing|ness|tion|sion|ety|iety|ous|able|ment|ities|alities|ial)$/i.test(right)) {
     return true
   }
   return false

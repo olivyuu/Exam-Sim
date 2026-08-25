@@ -222,18 +222,6 @@ export async function ingestPair(
         const visualText = await ocrDataUrl(crop.dataUrl)
         if (visualText.trim()) draft = refineWithVisualPage(draft, visualText)
       }
-      if (draft.needsTableImage) {
-        const table =
-          (await cropByTextMarkers(
-            page,
-            canvas,
-            /specific|urinalysis|gravity/i,
-            /previous|next|lab values/i,
-            'table',
-            { padTop: 0.04, padBottom: 0.02 }
-          )) ?? cropCanvas(canvas, { left: 0.04, top: 0.28, right: 0.96, bottom: 0.88 }, 'table')
-        questionImages.push(table)
-      }
       if (draft.needsFigure) {
         const figure =
           (await cropFigure(page, canvas)) ??
@@ -273,8 +261,7 @@ export async function ingestPair(
       strikethroughChoices: [],
       notes: '',
       reviewStatus: 'unanswered',
-      parseWarnings: draft.parseWarnings,
-      usedOriginalImage: Boolean(pageImageDataUrl && draft.usedOriginalImage)
+      parseWarnings: draft.parseWarnings
     })
   }
 

@@ -9,6 +9,7 @@ import {
   qcStemAgainstSource,
   needsOcr,
   splitChoices,
+  splitStemSegments,
   stripChrome,
   stripFooterJunk
 } from './examParser'
@@ -363,15 +364,15 @@ E) Placement of an inferior vena cava filter`,
     expect(qc.reasons.length).toBeGreaterThan(0)
   })
 
-  it('marks a too-short stem to show the original PDF page', () => {
+  it('warns when a stem is too short without forcing the original page image', () => {
     const short = SAMPLE_QUESTION.replace(
       /1\. A 45-year-old[\s\S]*?next step\?/,
       '1. Hi?'
     )
     const result = assembleSet([{ pageNumber: 1, text: short, usedOcr: false }], [])
     expect(result.questions[0]?.questionStem).toMatch(/Hi\?/)
-    expect(result.questions[0].usedOriginalImage).toBe(true)
-    expect(result.warnings.some((warning) => /original PDF page/i.test(warning))).toBe(true)
+    expect(result.questions[0].usedOriginalImage).toBeFalsy()
+    expect(result.warnings.some((warning) => /original page image/i.test(warning))).toBe(true)
   })
 
   it('warns when question and answer counts differ', () => {
@@ -424,6 +425,9 @@ Which of the following is the most likely cause of her acidosis?
     expect(formatted).toMatch(/Na\+\s+139 mEq\/L/)
     expect(formatted).toMatch(/Glucose\s+783 mg\/dL/)
     expect(formatted).toMatch(/Which of the following/)
+    expect(formatted).toMatch(/Na\+\t139 mEq\/L/)
+    const labs = splitStemSegments(formatted).find((segment) => segment.type === 'labs')
+    expect(labs?.type === 'labs' && labs.rows.some((row) => row.type === 'row' && row.name === 'Na+')).toBe(true)
   })
 
   it('pairs multi-section laboratory panels without a screenshot', () => {
@@ -509,6 +513,7 @@ Which of the following is the most likely explanation?`)
     expect(formatted).toMatch(/On Admission\s+Now/)
     expect(formatted).toMatch(/Urea nitrogen\s+38\s+54/)
     expect(formatted).toMatch(/Casts\s+None\s+coarse granular/)
+    expect(formatted).toMatch(/\tOn Admission\tNow/)
   })
 
   it('labels unnamed arterial-blood-gas values', () => {
@@ -532,6 +537,44 @@ Which of the following is the most likely diagnosis?`)
     expect(formatted).toMatch(/Mean corpuscular volume\s+102 µm³/)
     expect(formatted).toMatch(/Partial thromboplastin time\s+28 sec/)
     expect(formatted).toMatch(/Cl-\s+106 mEq\/L/)
+  })
+
+  it('pairs hemoglobin A1c and mashed urea nitrogen with the matching units', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Serum studies show:
+Hemoglobin A1c
+Serum
+Ureanitrogen
+Glucose
+Creatinine
+Urine protein
+7.3%
+17 mg/dl
+169 mg/dl
+1.1 mg/dl
+180 mg/24 h
+Which of the following is the most likely diagnosis?`)
+    expect(formatted).toMatch(/Hemoglobin A1c\s+7\.3%/)
+    expect(formatted).toMatch(/Urea nitrogen\s+17 mg\/dl/)
+    expect(formatted).toMatch(/Glucose\s+169 mg\/dl/)
+    expect(formatted).toMatch(/Creatinine\s+1\.1 mg\/dl/)
+    expect(formatted).toMatch(/Urine protein\s+180 mg\/24 h/)
+  })
+
+  it('splits packed lab values onto the matching names', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+    Laboratory studies show:
+Hematocrit
+Mean corpuscular volume
+Leukocyte count
+Reticulocyte count
+Platelet count
+26% 2500/mm³ 0.2% 20,000/mm³
+Which of the following nutritional deficiencies is most likely?`)
+    expect(formatted).toMatch(/Hematocrit\s+26%/)
+    expect(formatted).toMatch(/Leukocyte count\s+2500\/mm³/)
+    expect(formatted).toMatch(/Reticulocyte count\s+0\.2%/)
+    expect(formatted).toMatch(/Platelet count\s+20,000\/mm³/)
   })
 
   it('pairs urine dipstick names that sit after the last choice', () => {
@@ -698,6 +741,23 @@ Urine Osmolality
     expect(parsed?.answerChoices.map((c) => c.label).join('')).toMatch(/ABCDE/)
   })
 
+  it('keeps parsed table-choice values instead of wiping them', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 1 of 50
+1. Which of the following is the most likely set of findings on urinalysis?
+0 A) 1.003 1+ 30
+0 B) 1.005 trace 30
+0 C) 1.012 2 5
+0 D) 1.012 1+ 3
+0 E) 1.012 3+ 100
+0 F) 1.030 4+ 30`,
+      1
+    )
+    expect(parsed?.needsTableImage).toBe(true)
+    expect(parsed?.answerChoices[0]?.text).toMatch(/1\.003/)
+    expect(parsed?.answerChoices[5]?.text).toMatch(/1\.030/)
+  })
+
   it('strips trailing exam-footer junk from the last choice', () => {
     const text = `Exam Section : Item 1 of 50
 1. A 40-year-old man has a rash on his scalp. Which of the following is the most likely diagnosis?
@@ -776,6 +836,59 @@ Administration of which of the following is the most appropriate intervention?
       'Vitamin B6',
       'Vitamin B12 (cyanocobalamin)'
     ])
+  })
+
+  it('repairs OCR commas in vitamin B names and stray choice question marks', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 1 of 50
+1. A 70-year-old woman has a sore tongue. BMI is 31 kg/m2. Which of the following nutritional deficiencies is most likely?
+O A) Iron
+O B) Niacin
+O C) Vitamin B, (thiamine)
+O D) Vitamin B6
+O E) Vitamin B,2 (cobalamin) ?`,
+      1
+    )
+    expect(parsed?.questionStem).toMatch(/kg\/m²/)
+    expect(parsed?.answerChoices.find((choice) => choice.label === 'C')?.text).toBe('Vitamin B1 (thiamine)')
+    expect(parsed?.answerChoices.find((choice) => choice.label === 'E')?.text).toBe('Vitamin B12 (cobalamin)')
+  })
+
+  it('does not split one complete option into extra choices', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 3 of 50
+3. Which of the following is the most appropriate next step?
+O A) Percutaneous Coronary Intervention
+O B) Medical therapy with aspirin
+O C) Vitamin B1 (thiamine)
+O D) Observation and follow-up
+O E) Reassurance`,
+      3
+    )
+    expect(parsed?.answerChoices.map((choice) => choice.label)).toEqual(['A', 'B', 'C', 'D', 'E'])
+    expect(parsed?.answerChoices.map((choice) => choice.text)).toEqual([
+      'Percutaneous Coronary Intervention',
+      'Medical therapy with aspirin',
+      'Vitamin B1 (thiamine)',
+      'Observation and follow-up',
+      'Reassurance'
+    ])
+  })
+
+  it('strips browser and series chrome that leaked into a stem', () => {
+    const parsed = parseQuestionPage(
+      `Exam Section : Item 25 of 50
+4) 2022 Clinical Mastery Series - Profile 1 - Microsoft Edge • Mark - Family Medicine Self Assessment 31 min 10 sec is the most appropriate next step in management?
+O A) Obtain depression screening
+O B) Obtain serum thyroid-stimulating hormone concentration
+O C) Order mammography
+O D) Order mental status examination
+O E) Schedule a follow-up scan now`,
+      25
+    )
+    expect(parsed?.questionStem).not.toMatch(/Microsoft Edge/i)
+    expect(parsed?.questionStem).not.toMatch(/Clinical Mastery/i)
+    expect(parsed?.questionStem).toMatch(/most appropriate next step/)
   })
 
   it('unwraps PDF line wraps and flags a blood-smear figure', () => {

@@ -260,12 +260,45 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   line-height: 1.55;
   max-width: 920px;
   user-select: text;
+}
+.question-prose {
   white-space: pre-wrap;
 }
 .question-stem mark {
   background: var(--yellow-bg);
   color: inherit;
   padding: 0;
+}
+.lab-table {
+  border-collapse: collapse;
+  border: none;
+  margin: 0.55em 0 0.9em;
+  font-size: inherit;
+  line-height: 1.4;
+}
+.lab-table th,
+.lab-table td {
+  border: none;
+  padding: 0.08em 2.6em 0.08em 0;
+  text-align: left;
+  font-weight: 400;
+  vertical-align: baseline;
+  background: transparent;
+}
+.lab-table .lab-name {
+  white-space: nowrap;
+  padding-right: 2.8em;
+}
+.lab-table .lab-val {
+  white-space: nowrap;
+}
+.lab-table .lab-section td {
+  padding-top: 0.5em;
+  font-weight: 600;
+}
+.lab-table .lab-head th {
+  font-weight: 600;
+  padding-bottom: 0.2em;
 }
 
 .choice-box {

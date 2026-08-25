@@ -29,7 +29,7 @@ export function questionTextBlob(draft: {
 }
 
 export function shouldCheckVisual(draft: ParsedQuestionDraft): boolean {
-  if (draft.usedOriginalImage) return true
+  if (draft.parseWarnings.some((warning) => /original (PDF|page|question)/i.test(warning))) return true
   const blob = questionTextBlob(draft)
   if (looksLikeSpacedGlyphText(blob)) return true
   const filled = draft.answerChoices.filter((choice) => choice.text.trim().length > 2).length
@@ -66,18 +66,16 @@ export function refineWithVisualPage(
       parseWarnings: [
         ...draft.parseWarnings,
         'Question text was aligned to the original page image.'
-      ],
-      usedOriginalImage: false
+      ]
     }
   }
 
   if (currentScore < VISUAL_FALLBACK_THRESHOLD && !draft.needsFigure && !draft.needsTableImage) {
     return {
       ...draft,
-      usedOriginalImage: true,
       parseWarnings: [
         ...draft.parseWarnings,
-        'Formatted text did not match the original page image closely enough, so the original page will be shown.'
+        'Formatted text may not match the original page image closely. Use “Show image of original question” if needed.'
       ]
     }
   }

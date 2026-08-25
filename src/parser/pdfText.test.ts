@@ -38,4 +38,18 @@ describe('pdfText', () => {
       'A 45-year-old man with hypertension is brought to the emergency department because of chest pain. Which of the following is the most appropriate next step?'
     expect(collapseBrokenPdfSpaces(stem)).toBe(stem)
   })
+
+  it('does not glue ordinary words when a page also has a few broken glyphs', () => {
+    const text = collapseBrokenPdfSpaces(
+      'She drinks one beer daily and four to five large cups of coffee. A 4-cm nontender lump became tender. diabetes me llitus and anx i ety.'
+    )
+    expect(text).toMatch(/beer daily/)
+    expect(text).toMatch(/five large/)
+    expect(text).toMatch(/nontender lump became/)
+    expect(text).not.toMatch(/beerdaily/)
+    expect(text).not.toMatch(/fivelarge/)
+    expect(text).not.toMatch(/lumpbecame/)
+    expect(text).toMatch(/diabetes mellitus/)
+    expect(text).toMatch(/anxiety/)
+  })
 })

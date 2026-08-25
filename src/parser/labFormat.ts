@@ -167,9 +167,18 @@ export function isLabNameLine(line: string): boolean {
   return /^(Na\+|K\+|Cl-|HCO3-|Ca2\+|pH|RBC|WBC|ALT|AST|Po2|Pco2|Bands|Ketones|Direct|Total|Iron|Blood)$/i.test(t)
 }
 
+function canonicalLabName(token: string): string {
+  const compact = token.replace(/[\s-]+/g, '').toLowerCase()
+  for (const name of KNOWN_NAMES) {
+    if (name.replace(/[\s-]+/g, '').toLowerCase() === compact) return name
+  }
+  return token
+}
+
 export function explodeLabLine(line: string): string[] {
   let t = normalizeLabToken(line)
   if (!t || /^[O0Q]$/i.test(t)) return []
+  t = canonicalLabName(t)
   t = t.replace(/\s*\((mg\/dl|g\/dl|\/hpf)\s*\)\s*$/i, '')
 
   const mashed = t.match(/^(.*[A-Za-z)\]])\s*(\d[\d.,].*)$/)
@@ -230,7 +239,7 @@ function pairTwoColumn(tokens: string[]): string[] | null {
   const second = tokens.slice(now + 1).filter((token) => !isColumnHeader(token))
   if (first.length < 2 || second.length < 2) return null
 
-  const out = ['On Admission    Now']
+  const out = ['\tOn Admission\tNow']
   let a = 0
   let b = 0
   for (const name of names) {
@@ -240,7 +249,7 @@ function pairTwoColumn(tokens: string[]): string[] | null {
     }
     const left = first[a++] ?? ''
     const right = second[b++] ?? ''
-    out.push(`${name}    ${left}    ${right}`.trim())
+    out.push(`${name}\t${left}\t${right}`.replace(/\t+$/, ''))
   }
   return out
 }
@@ -277,10 +286,11 @@ function valueUnitFamily(value: string): string | null {
   if (/µg\/d[lL]|mcg\/d[lL]|μg\/d[lL]/i.test(value)) return 'iron'
   if (/mm\s*\/\s*h/i.test(value)) return 'esr'
   if (/mEq\/L|mmol\/L/i.test(value)) return 'electrolyte'
-  if (/mg\/d[lL]/i.test(value)) return 'chem'
+  if (/mg\/d[lL]|mg\/24\s*h/i.test(value)) return 'chem'
   if (/g\/d[lL]/i.test(value)) return 'protein'
   if (/U\/L/i.test(value)) return 'enzyme'
   if (/\/mm³|\/mm3/i.test(value)) return 'count'
+  if (/mm\s*\/\s*h/i.test(value)) return 'esr'
   if (/mm Hg/i.test(value)) return 'gas'
   if (/^1\.\d{3}/.test(value)) return 'sg'
   if (/^(?:positive|negative|nonreactive|reactive)$/i.test(value)) return 'sero'
@@ -289,15 +299,16 @@ function valueUnitFamily(value: string): string | null {
 
 function nameUnitFamily(name: string): string | null {
   if (/mean corpuscular volume|^mcv$/i.test(name)) return 'volume'
-  if (/hematocrit/i.test(name)) return 'percent'
+  if (/hematocrit|hemoglobin\s*a1c|hba1c|hemoglobin\s*a2|hemoglobin\s*f|^hemoglobin a$|reticulocyte|transferrin saturation|fractional excretion/i.test(name)) {
+    return 'percent'
+  }
   if (/hemoglobin(?! electrophoresis)/i.test(name)) return 'protein'
   if (/ferritin/i.test(name)) return 'ferritin'
   if (/iron-binding|^tibc$|^(?:serum )?iron$/i.test(name)) return 'iron'
   if (/sedimentation/i.test(name)) return 'esr'
-  if (/fractional excretion/i.test(name)) return 'percent'
   if (/residual volume/i.test(name)) return 'volume'
   if (/leukocyte count|platelet count/i.test(name)) return 'count'
-  if (/urea nitrogen|creatinine|bilirubin|cholesterol|calcium/i.test(name)) return 'chem'
+  if (/urea nitrogen|creatinine|bilirubin|cholesterol|calcium|urine protein/i.test(name)) return 'chem'
   if (/^(?:na\+|k\+|cl-|hco3-|bicarbonate)$/i.test(name)) return 'electrolyte'
   if (/specific gravity/i.test(name)) return 'sg'
   if (/albumin|total protein/i.test(name)) return 'protein'
@@ -322,7 +333,7 @@ function pairLabTokens(tokens: string[]): string[] {
   type Item = { type: 'name' | 'header'; text: string }
   const pending: Item[] = []
   const out: string[] = []
-  const pair = (name: string, value: string) => `${name.padEnd(Math.max(24, name.length + 2))}${value}`
+  const pair = (name: string, value: string) => `${name}\t${value}`
   const nameCount = () => pending.filter((item) => item.type === 'name').length
 
   const emitWithValues = (values: string[]) => {
@@ -379,6 +390,16 @@ function pairLabTokens(tokens: string[]): string[] {
   return out
 }
 
+function expandPackedLabValues(token: string): string[] {
+  if (!token || isLabValueLine(token) || isLabNameLine(token) || isLabSection(token)) return [token]
+  const pieces = token
+    .split(new RegExp(`(?<=${LAB_UNITS})\\s+`, 'i'))
+    .map(normalizeLabToken)
+    .filter(Boolean)
+  if (pieces.length > 1 && pieces.every((piece) => isLabValueLine(piece))) return pieces
+  return [token]
+}
+
 function collectLabTokens(text: string): string[] {
   const tokens: string[] = []
   for (const line of text.split('\n')) {
@@ -387,7 +408,7 @@ function collectLabTokens(text: string): string[] {
       if (LAB_STOP_LINE.test(token) || /which of the following|intravenous infusion of/i.test(token) || token.length > 90) {
         return tokens
       }
-      tokens.push(token)
+      tokens.push(...expandPackedLabValues(token))
     }
   }
   return tokens
@@ -519,4 +540,74 @@ export function formatEmbeddedLabs(text: string, extraTokens: string[] = []): st
   const paired = pairLabTokens(labeled)
   const leftover = tidyLeftover(leftoverProse(body))
   return [prefix, header, ...paired, leftover, whichLine ? `\n${whichLine}` : ''].filter(Boolean).join('\n')
+}
+
+export type LabTableRow =
+  | { type: 'section'; label: string }
+  | { type: 'header'; values: string[] }
+  | { type: 'row'; name: string; values: string[] }
+
+export type StemSegment =
+  | { type: 'text'; text: string; start: number }
+  | { type: 'labs'; rows: LabTableRow[]; start: number }
+
+function isLabClusterLine(line: string): boolean {
+  const trimmed = line.trim()
+  if (!trimmed) return false
+  if (trimmed.includes('\t')) return true
+  if (isLabSection(trimmed) || isLabNameLine(trimmed) || isLabValueLine(trimmed)) return true
+  if (trimmed.length < 90 && /(?:mEq\/L|mg\/dL|g\/dL|\/mm³|\/hpf|mm Hg|µm³)/i.test(trimmed)) return true
+  return false
+}
+
+function clusterIsTable(lines: string[], start: number): boolean {
+  let tabs = 0
+  let count = 0
+  for (let index = start; index < lines.length && isLabClusterLine(lines[index]); index++) {
+    count += 1
+    if (lines[index].includes('\t')) tabs += 1
+  }
+  return tabs >= 1 || count >= 2
+}
+
+function parseLabRow(line: string): LabTableRow {
+  if (line.includes('\t')) {
+    const cells = line.split('\t').map((cell) => cell.trim())
+    if (!cells[0] && cells.slice(1).some(Boolean)) return { type: 'header', values: cells.slice(1) }
+    return { type: 'row', name: cells[0] ?? '', values: cells.slice(1) }
+  }
+  const trimmed = line.trim()
+  if (isLabSection(trimmed)) return { type: 'section', label: trimmed }
+  if (isLabValueLine(trimmed)) return { type: 'row', name: '', values: [trimmed] }
+  return { type: 'row', name: trimmed, values: [] }
+}
+
+export function splitStemSegments(stem: string): StemSegment[] {
+  const lines = stem.split('\n')
+  const segments: StemSegment[] = []
+  let offset = 0
+  let index = 0
+  while (index < lines.length) {
+    if (isLabClusterLine(lines[index]) && clusterIsTable(lines, index)) {
+      const start = offset
+      const rows: LabTableRow[] = []
+      while (index < lines.length && isLabClusterLine(lines[index])) {
+        rows.push(parseLabRow(lines[index]))
+        offset += lines[index].length + 1
+        index += 1
+      }
+      segments.push({ type: 'labs', rows, start })
+      continue
+    }
+    const start = offset
+    const prose: string[] = []
+    while (index < lines.length && !(isLabClusterLine(lines[index]) && clusterIsTable(lines, index))) {
+      prose.push(lines[index])
+      offset += lines[index].length + 1
+      index += 1
+    }
+    const text = prose.join('\n')
+    if (text.length > 0) segments.push({ type: 'text', text, start })
+  }
+  return segments
 }

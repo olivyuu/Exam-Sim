@@ -62,8 +62,37 @@ export function HighlightableText({
     ])
   }
 
+export function HighlightableText({
+  text,
+  highlights,
+  enabled,
+  onChange
+}: {
+  text: string
+  highlights: TextHighlight[]
+  enabled: boolean
+  onChange: (next: TextHighlight[]) => void
+}) {
+  const parts = useMemo(() => segments(text, highlights), [text, highlights])
+
+  const handleMouseUp = (event: MouseEvent<HTMLDivElement>) => {
+    if (!enabled) return
+    const selection = window.getSelection()
+    if (!selection || selection.isCollapsed) return
+    const range = selection.getRangeAt(0)
+    const root = event.currentTarget
+    if (!root.contains(range.commonAncestorContainer)) return
+    const offsets = offsetsFromRange(root, range)
+    selection.removeAllRanges()
+    if (!offsets) return
+    onChange([
+      ...highlights,
+      { start: offsets.start, end: offsets.end, text: text.slice(offsets.start, offsets.end) }
+    ])
+  }
+
   return (
-    <div className="question-stem" onMouseUp={handleMouseUp}>
+    <div className="question-prose" onMouseUp={handleMouseUp}>
       {parts.map((part, index) => (part.marked ? <mark key={index}>{part.text}</mark> : <span key={index}>{part.text}</span>))}
     </div>
   )

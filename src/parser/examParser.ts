@@ -12,13 +12,15 @@ export {
   isLabNameLine,
   isLabSection,
   isLabValueLine,
-  peelLabTail
+  peelLabTail,
+  splitStemSegments
 } from './labFormat'
+export type { LabTableRow, StemSegment } from './labFormat'
 
 const CHROME_LINE =
-  /^(exam section|national board|medicine self-assessment|time remaining|lab values|calculator|review|help|pause|previous|next|score report|https?:\/\/|new section|mark|■\s*mark|item:\s*\d+|question id:|test id:|full screen|settings|notes|proceed to next item)/i
+  /^(exam section|national board|medicine self-assessment|clinical mastery series|microsoft edge|time remaining|lab values|calculator|review|help|pause|previous|next|score report|https?:\/\/|new section|mark|■\s*mark|item:\s*\d+|question id:|test id:|full screen|settings|notes|proceed to next item|profile\s+\d+)/i
 
-const TIMER_LINE = /^\d+\s*hr\s+\d+\s*min(?:\s+\d+\s*sec)?$/i
+const TIMER_LINE = /^(?:\d+\s*hr\s+)?\d+\s*min(?:\s+\d+\s*sec)?$/i
 
 const ITEM_HEADER =
   /(?:exam\s*section\s*:?\s*)?(?:item|question)\s+(\d{1,3})\s+(?:of|ot|0t|or|\/)\s+(\d{1,3})/i
@@ -28,9 +30,9 @@ const NUMBERED_STEM = /(?:^|\n)\s*(\d{1,3})\.\s+(?=[A-Z0-9])/
 const CHOICE_SPLIT = /(?:^|\n)\s*(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(\s*)/g
 const CHOICE_DOT_SPLIT = /(?:^|\n)\s*(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\.(\s+)/g
 const INLINE_CHOICE =
-  /(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(?=\s+\S)/g
+  /(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-P])\s*\)(?=\s+\S)/g
 const INLINE_DOT_CHOICE =
-  /(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\.(?=\s+[A-Z(])/g
+  /(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-P])\.(?=\s+[A-Z][a-z])/g
 const AFTER_VIGNETTE_CHOICE =
   /(?:^|\n)\s*(?:[O0○●□■Q•·*]\s*)?[A-Pa-p]\s*[\)\.]/
 
@@ -85,7 +87,9 @@ export function stripChrome(text: string): string {
       if (/^[r~∼,\s]+$/i.test(trimmed) && /[~∼]/.test(trimmed)) return false
       if (/^\*?\s*\d+\s*all\s+\d+%/i.test(trimmed)) return false
       if (/^[+=\-\s]*question\s+\d{1,3}\s+(?:of|ot|0t|or|\/)\s+\d{1,3}/i.test(trimmed)) return false
-      if (/^\d{1,2}:\d{2}\s*[ap]m$/i.test(trimmed)) return false
+      if (/clinical mastery series|microsoft edge|self[- ]assessment/i.test(trimmed) && trimmed.length < 80) {
+        return false
+      }
       if (/^[ILC]\.?$/i.test(trimmed)) return false
       if (/^[ce]3$/i.test(trimmed)) return false
       return true
@@ -113,6 +117,17 @@ export function stripFooterJunk(text: string): string {
 
 export function stripLeadingArtifacts(text: string): string {
   let next = text.trim()
+  next = next
+    .replace(/\b\d{4}\s+Clinical Mastery Series\b/gi, ' ')
+    .replace(/\bMicrosoft Edge\b/gi, ' ')
+    .replace(/\bProfile\s+\d+\b/gi, ' ')
+    .replace(/\b(?:Internal Medicine|Family Medicine|Surgery|Pediatrics|Psychiatry|Neurology|Emergency Medicine|OBGYN)\s+Self[- ]Assessment\b/gi, ' ')
+    .replace(/\bSelf[- ]Assessment\b/gi, ' ')
+    .replace(/\b\d+\s*hr\s+\d+\s*min(?:\s+\d+\s*sec)?\b/gi, ' ')
+    .replace(/\b\d+\s*min\s+\d+\s*sec\b/gi, ' ')
+    .replace(/\s*[•·]\s*Mark\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
   for (let i = 0; i < 4; i++) {
     const stripped = next
       .replace(/^[xX~■✓✔+=<>|:\s•·*]+/g, '')
@@ -136,7 +151,16 @@ export function fixTypographics(text: string): string {
     .replace(/\ban S([1-4])1\b/g, 'an S$1')
     .replace(/\bS\s+([1-4])\b/g, 'S$1')
     .replace(/\bV\s+([1-6])\b/g, 'V$1')
+    .replace(/\bVitamin B,2\b/gi, 'Vitamin B12')
+    .replace(/\bVitamin B,(\d)/gi, 'Vitamin B$1')
+    .replace(/\bVitamin B,(?=\s*\()/gi, 'Vitamin B1')
     .replace(/\bVitamin B\s+(\d+)/gi, 'Vitamin B$1')
+    .replace(/\bkg\/m(?:2|\?|)\b/gi, 'kg/m²')
+    .replace(/\bPap\s*smears\b/gi, 'Pap smears')
+    .replace(/\bPap\s*smear\b/gi, 'Pap smear')
+    .replace(/\bHPV(?=[a-z])/g, 'HPV ')
+    .replace(/\bthe\s*\|\s*following\b/gi, 'the following')
+    .replace(/\s+\|\s+/g, ' ')
     .replace(/\bFEV\s*[,:]\s*FVC\b/g, 'FEV1:FVC')
     .replace(/(\d)\s+%/g, '$1%')
     .replace(/\b(\d+)\s+Ib\b/g, '$1 lb')
@@ -174,7 +198,7 @@ export function unwrapProse(text: string): string {
       isLabSection(trimmed) ||
       isLabNameLine(trimmed) ||
       /studies show:|urinalysis shows:/i.test(trimmed) ||
-      /    /.test(raw)
+      /\S\s{2,}\S/.test(raw)
     ) {
       flush()
       out.push(trimmed)
@@ -246,10 +270,10 @@ export function hasExplanationLeak(text: string): boolean {
 }
 
 export const ORIGINAL_PDF_FALLBACK_MESSAGE =
-  'The original PDF is shown because formatted text could not be generated reliably for this question.'
+  'Use the original page image if the formatted text looks wrong.'
 
 export const STEM_QC_WARNING =
-  'Formatted text did not match the original PDF closely enough, so the original page will be shown.'
+  'Formatted text may not match the original PDF closely. Use “Show image of original question” if needed.'
 
 const SOURCE_CHOICE_CUT = /(?:^|\n)\s*(?:[O0○●□■Q•·*]\s*)?A\s*[).]/
 
@@ -315,7 +339,7 @@ export function splitStemPrompt(stem: string): { lead: string; prompt: string } 
 }
 
 export function looksLikeFigureQuestion(stem: string): boolean {
-  return /\b((the )?(lesion|photograph|x-ray|chest x-ray|image|figure|smear|blood smears?|ecg|ekg|graph|life table)\s+is shown|(blood smears?|chest x-rays?|x-rays?|photographs?|ecgs?|ekgs?)\s+are shown|is shown\.|photograph of the|graph shows|appear as shown|\d+\s*mm\/s|\d+\s*mm\/mV)\b/i.test(
+  return /\b((the )?(lesion|photograph|x-ray|chest x-ray|image|figure|smear|blood smears?|ecg|ekg|graph|life table|roc curve|receiver operating characteristic)\s+is shown|(blood smears?|chest x-rays?|x-rays?|photographs?|ecgs?|ekgs?)\s+are shown|is shown\.|photograph of the|graph shows|curve shows|appear as shown|\d+\s*mm\/s|\d+\s*mm\/mV)\b/i.test(
     stem
   )
 }
@@ -370,9 +394,9 @@ function applyChoiceMarkup(text: string): string {
     )
     .replace(INLINE_CHOICE, '\n$1) ')
     .replace(INLINE_DOT_CHOICE, '\n$1. ')
-    .replace(/(?<=[a-z0-9%.])([A-Pa-p])\s*\)(?=\s*[A-Z(])/g, '\n$1) ')
-    .replace(/(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-Pa-p])\s*\)(?=[A-Za-z(])/g, '\n$1) ')
-    .replace(/\)[ \t]*([B-Pa-p])\s*\)/g, ')\n$1) ')
+    .replace(/(?<=[a-z0-9%.])([A-P])\s*\)(?=\s*(?:[A-Z][a-z]|\())/g, '\n$1) ')
+    .replace(/(?<=\S)[ \t]+(?:[O0○●□■✓✔✗✘xXQ•·*]\s*)?([A-P])\s*\)(?=[A-Za-z(])/g, '\n$1) ')
+    .replace(/\)[ \t]*([B-P])\s*\)/g, ')\n$1) ')
     .replace(/(?<=\S)\s+[O0]\s+(?=[A-Z][a-z]{2,})/g, '\n')
 }
 
@@ -514,7 +538,7 @@ function explodeMergedChoices(
   choices: { label: string; text: string }[]
 ): { label: string; text: string }[] {
   const out: { label: string; text: string }[] = []
-  const embedded = /(?:^|\s+[O0Q•·*]\s*|\s+)([A-Pa-p])\s*[\)\.]\s+(?=[A-Z0-9("])/g
+  const embedded = /(?:^|\s+[O0Q•·*]\s*|\s+)([A-P])\s*[\)\.]\s+(?=[A-Z][a-z0-9("])/g
   for (const choice of choices) {
     const matches = [...choice.text.matchAll(new RegExp(embedded.source, 'g'))].filter((match) => {
       const before = choice.text.slice(Math.max(0, (match.index ?? 0) - 12), match.index)
@@ -595,10 +619,11 @@ function splitTitleCaseChoice(text: string): string[] {
   if (looksLikeLabNameList(right)) return [text]
   const leftWords = left.split(/\s+/).filter(Boolean)
   const rightWords = right.split(/\s+/).filter(Boolean)
-  const leftOk =
-    (leftWords.length >= 2 && /[a-z]{3,}$/.test(left)) || (leftWords.length === 1 && left.length >= 12)
-  if (!leftOk || right.length < 6) return [text]
+  // A single long medical word plus a capital (Percutaneous Coronary…) is one option,
+  // not two stacked two-column choices.
+  if (leftWords.length < 2 || !/[a-z]{3,}$/.test(left) || right.length < 6) return [text]
   if (rightWords.length === 1 && right.length < 8) return [text]
+  if (/^(and|or|of|the|to|for|with|in|on|at|from)\b/i.test(right)) return [text]
   return [left, right]
 }
 
@@ -622,16 +647,29 @@ function needsTwoColumnRepair(choices: { label: string; text: string }[]): boole
   return choices.some((choice) => {
     const text = choice.text.trim()
     if (/\s+[O0]+(?:\s|,|$)/.test(text) || /(?:^|\s)[O0],?\s*$/.test(text)) return true
-    if (/^\s*[A-Pa-p]\s*[).]/.test(text)) return true
-    if (/\s+[A-Pa-p]\s*[).]\s+[A-Z]/.test(text)) return true
-    return splitGluedChoicePhrases(text).length > 1
+    if (/^\s*[A-P]\s*[).]/.test(text)) return true
+    if (/\s+[A-P]\s*[).]\s+[A-Z]/.test(text)) return true
+    return false
   })
+}
+
+function looksLikeCompleteChoiceList(choices: { label: string; text: string }[]): boolean {
+  if (choices.length < 5) return false
+  const sequential = choices.every((choice, index) => choice.label === String.fromCharCode(65 + index))
+  if (!sequential) return false
+  const texts = choices.map((choice) => stripChoiceBubbles(choice.text))
+  if (texts.some((text) => text.length < 3 || /^(?:of|or)\s+/i.test(text))) return false
+  if (choices.some((choice) => /\s+[O0]+\s+(?:of|or)\b/i.test(choice.text))) return false
+  return texts.every((text) => text.length >= 3)
 }
 
 function repairTwoColumnChoices(
   choices: { label: string; text: string }[]
 ): { label: string; text: string }[] {
   if (!needsTwoColumnRepair(choices)) return choices
+  if (looksLikeCompleteChoiceList(choices)) {
+    return choices.map((choice) => ({ ...choice, text: stripChoiceBubbles(choice.text) }))
+  }
   const phrases = mergeChoiceFragments(choices.flatMap((choice) => splitGluedChoicePhrases(choice.text)))
   if (phrases.length < 4 || phrases.length < choices.length) return choices
   return phrases.map((text, index) => ({
@@ -758,6 +796,7 @@ function expandTableChoices(
   choices: { label: string; text: string }[],
   source = ''
 ): { label: string; text: string }[] {
+  const byLabel = new Map(choices.map((choice) => [choice.label, choice]))
   const labels = choices.map((choice) => choice.label).filter((label) => /[A-F]/.test(label))
   let max = labels.reduce((current, label) => (label > current ? label : current), 'A')
   if (max < 'E' || labels.length < 3) {
@@ -766,7 +805,8 @@ function expandTableChoices(
   if (labels.includes('F') && max < 'F') max = 'F'
   const out: { label: string; text: string }[] = []
   for (let code = 65; code <= max.charCodeAt(0); code++) {
-    out.push({ label: String.fromCharCode(code), text: '' })
+    const label = String.fromCharCode(code)
+    out.push(byLabel.get(label) ?? { label, text: '' })
   }
   return out.length >= 2 ? out : choices
 }
@@ -794,6 +834,7 @@ function normalizeChoices(
   for (const choice of choices) {
     let text = stripFooterJunk(trimChoiceExplanation(choice.text))
     text = stripFooterJunk(fixTypographics(text.replace(/\s+/g, ' ').replace(/\s*Proceed to Next Item[\s\S]*$/i, '').trim()))
+    text = text.replace(/\s+\?\s*$/, '')
     if (/^(next|previous|score report|lab values|calculator|help|pause)$/i.test(text)) break
     if (isPercentChoice(choice.text.trim()) || isPercentChoice(text)) {
       text = choice.text.trim() || text
@@ -1193,7 +1234,6 @@ export function assembleSet(
     })
     if (!qc.ok) {
       fallbackCount += 1
-      question.usedOriginalImage = true
       const detail = `${STEM_QC_WARNING} ${qc.reasons.join('; ')}`
       if (!question.parseWarnings.includes(detail)) question.parseWarnings.push(detail)
     }
@@ -1211,7 +1251,7 @@ export function assembleSet(
   }
   if (fallbackCount > 0) {
     warnings.push(
-      `${fallbackCount} question(s) will show the original PDF page because formatted text could not be generated reliably.`
+      `${fallbackCount} question(s) may need the original page image. Formatted text is still shown; use “Show image of original question” if something looks off.`
     )
   }
 
