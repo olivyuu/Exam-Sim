@@ -3,6 +3,7 @@ import {
   isLabNameLine,
   isLabSection,
   isLabValueLine,
+  joinBrokenLabUnits,
   peelLabTail
 } from './labFormat'
 import { collapseBrokenPdfSpaces, looksLikeSpacedGlyphText } from './pdfText'
@@ -126,7 +127,7 @@ export function stripLeadingArtifacts(text: string): string {
     .replace(/\b\d+\s*hr\s+\d+\s*min(?:\s+\d+\s*sec)?\b/gi, ' ')
     .replace(/\b\d+\s*min\s+\d+\s*sec\b/gi, ' ')
     .replace(/\s*[•·]\s*Mark\b/gi, ' ')
-    .replace(/\s{2,}/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim()
   for (let i = 0; i < 4; i++) {
     const stripped = next
@@ -192,6 +193,11 @@ export function unwrapProse(text: string): string {
     ) {
       buffer = `${buffer} ${trimmed}`
       flush()
+      continue
+    }
+    if (/^which of the following/i.test(trimmed) || /^(?:intravenous infusion of which)/i.test(trimmed)) {
+      flush()
+      out.push(trimmed)
       continue
     }
     if (
@@ -754,7 +760,7 @@ export function recoverQuestionLayout(
         last.text = percent[1].trim()
       }
     }
-    let stem = polishStem(formatEmbeddedLabs(stripExplanationFromStem(rawStem), extras))
+    let stem = polishStem(formatEmbeddedLabs(joinBrokenLabUnits(stripExplanationFromStem(rawStem)), extras))
     stem = stripExplanationFromStem(stem.replace(/\?\s+[\d+.\s\-/%hfpmmdlU]+\s*$/i, '?'))
     if (looksLikeTableQuestion(stem, nextChoices) || looksLikeTableQuestion(junkFree, nextChoices)) {
       const cut = stem.search(/\?\s*(Specific|Gravity|WBC|RBC|$)/i)

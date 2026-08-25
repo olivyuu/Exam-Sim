@@ -11,7 +11,8 @@ import {
   splitChoices,
   splitStemSegments,
   stripChrome,
-  stripFooterJunk
+  stripFooterJunk,
+  polishStem
 } from './examParser'
 import { pairingKey, looksLikeAnswerPdf } from '../shared/files'
 import { computeReviewStatus, totalTestSeconds, matrixStatus } from '../shared/types'
@@ -556,6 +557,76 @@ Which of the following is the most likely cause?`)
     expect(formatted).toMatch(/Blood Pressure \(mm Hg\)\t130\/80\t140\/70/)
     const tables = splitStemSegments(formatted).filter((segment) => segment.type === 'labs')
     expect(tables.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('keeps the stem question off the last lab row', () => {
+    const formatted = polishStem(
+      formatEmbeddedLabs(`A patient is evaluated.
+Laboratory studies show:
+Hematocrit
+40%
+Pleural fluid
+Glucose
+20 mg/dL
+Lactate dehydrogenase
+400 U/L
+Which of the following is the most appropriate next step in management?`)
+    )
+    expect(formatted).toMatch(/Lactate dehydrogenase\t400 U\/L/)
+    expect(formatted).not.toMatch(/400 U\/L Which of the following/)
+    expect(formatted).toMatch(/\nWhich of the following is the most appropriate next step in management\?/)
+    const labs = splitStemSegments(formatted).find((segment) => segment.type === 'labs')
+    expect(labs?.type).toBe('labs')
+    if (labs?.type !== 'labs') return
+    const last = labs.rows.filter((row) => row.type === 'row').at(-1)
+    expect(last && last.type === 'row' && last.values.join(' ')).not.toMatch(/which of the following/i)
+  })
+
+  it('zips stacked names with a following value column including million/mm³ and TSH', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Laboratory studies show:
+Hematocrit
+Erythrocyte count
+Leukocyte count
+Serum
+Thyroid-stimulating hormone
+Thyroxine (T 4)
+38%
+4 million/mm3
+5500/mm3
+0.5 µU/mL
+12 µg/dL
+Toxicology screening is negative. Which of the following is the most appropriate pharmacotherapy?`)
+    expect(formatted).toMatch(/Hematocrit\t38%/)
+    expect(formatted).toMatch(/Erythrocyte count\t4 million\/mm³/)
+    expect(formatted).toMatch(/Leukocyte count\t5500\/mm³/)
+    expect(formatted).toMatch(/Thyroid-stimulating hormone\t0\.5 µU\/mL/)
+    expect(formatted).toMatch(/Thyroxine \(T4\)\t12 µg\/dL/)
+    expect(formatted).not.toMatch(/Leukocyte count\t38%/)
+    const labs = splitStemSegments(formatted).find((segment) => segment.type === 'labs')
+    expect(labs?.type).toBe('labs')
+    if (labs?.type !== 'labs') return
+    const rows = labs.rows.filter((row) => row.type === 'row')
+    expect(rows.every((row) => row.values.length === 1 && row.values[0] && !row.values[0].includes('Which'))).toBe(true)
+  })
+
+  it('formats red-cell distribution width in a packed hematology panel', () => {
+    const formatted = formatEmbeddedLabs(`A patient is evaluated.
+Laboratory studies show:
+Hemoglobin
+Mean corpuscular volume
+Leukocyte count
+Platelet count
+Red cell distribution width
+10 g/dL
+64 µm3
+6100/mm3
+225,000/mm3
+10% (N=13%- 15%)
+A blood smear is shown. Which of the following is the most likely explanation for this patient's anemia?`)
+    expect(formatted).toMatch(/Red cell distribution width\t10% \(N=13%- 15%\)/)
+    expect(formatted).toMatch(/Mean corpuscular volume\t64 µm³/)
+    expect(formatted).not.toMatch(/Blood Which of the following/)
   })
 
   it('puts lab values on separate lines', () => {
